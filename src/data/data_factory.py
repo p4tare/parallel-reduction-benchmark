@@ -48,7 +48,7 @@ class DataFactory:
         if mode == "random_uniform":
             if "int" in dtype_str:
                 # Random integers between 0 and 1000
-                data = np.random.randint(0, 1000, size=size, dtype=np_type)
+                data = np.random.randint(0, 100, size=size, dtype=np_type)
             else:
                 # Random floats between 0.0 and 1.0
                 data = np.random.rand(size).astype(np_type)

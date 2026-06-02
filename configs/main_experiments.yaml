@@ -4,8 +4,8 @@ global:
   enable_nvml: true
   enable_perf: false
   polling_interval_ms: 10
-  cooling_threshold_gpu_c: 50.0
-  cooling_threshold_cpu_c: 65.0
+  cooling_threshold_gpu_c: 32.0
+  cooling_threshold_cpu_c: 61.0
   orchestrator_core_isolation: true
 
 experiments:
@@ -23,3 +23,18 @@ experiments:
       cpu_allocation_strategy: "p_cores_only"
       use_dedicated_gpu_threads: [true, false]
       cuda_block_sizes: [256, 512]
+
+  - id: "EXP_012_STATIC_EQUAL_HYBRID"
+    algorithm_path: "algorithms/hybrid/exp_012_static_equal"
+    compiler_flags: "-Xcompiler -fopenmp"
+    repetitions: 100
+    warmup_runs: 5
+    data:
+      sizes: [50000000]
+      types: ["float32", "double"]
+      generation_mode: "random_uniform"
+    hardware:
+      gpu_allocation: "0"
+      cpu_allocation_strategy: ["all", "p_cores_only", "e_cores_only"]
+      use_dedicated_gpu_threads: [true, false]
+      cuda_block_sizes: [512]
