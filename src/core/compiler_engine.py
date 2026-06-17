@@ -3,26 +3,29 @@ import subprocess
 
 class CompilerEngine:
     """
-    Just-In-Time (JIT) Compiler Engine.
-    Responsible for compiling C++/CUDA codes with specific macros (like DATA_TYPE)
-    and hardware-specific optimizations (like -arch=sm_89).
+    Smart Just-In-Time (JIT) Compiler Engine.
+    Compiles C++/CUDA codes using a universal wrapper template.
+    Uses timestamp-based caching to automatically rebuild if source code changes.
     """
-    def __init__(self, workspace_dir: str = "temp_workspace"):
-        self.workspace_dir = workspace_dir
-        if not os.path.exists(self.workspace_dir):
-            os.makedirs(self.workspace_dir)
+    def __init__(self):
+        pass
 
     def build_executable(self, task: dict, gpu_info: list) -> str:
         """
         Compiles the source code defined in the task configuration.
+        Places the binary inside the algorithm's directory.
         Returns the absolute path to the generated binary executable.
         """
-        exp_id = task.get("experiment_id", "UNKNOWN_EXP")
         algo_path = task.get("algorithm_path", "")
         data_type = task.get("data_type", "float32")
         flags_config = task.get("compiler_flags", "auto")
 
-        # Map Python/YAML types to C++ standard types
+        if not os.path.exists(algo_path):
+            raise FileNotFoundError(f"Algorithm path does not exist: {algo_path}")
+
+        # STRIP PRECISION SUFFIX (e.g., float32_3 -> float32)
+        base_data_type = data_type.split("_")[0]
+
         cpp_type_map = {
             "int32": "int32_t",
             "int64": "int64_t",
@@ -30,49 +33,57 @@ class CompilerEngine:
             "float64": "double",
             "double": "double"
         }
-        cpp_type = cpp_type_map.get(data_type, "float")
+        
+        # Use the stripped base type for mapping
+        cpp_type = cpp_type_map.get(base_data_type, "float")
 
-        # Define the output binary path
-        out_filename = f"{exp_id}_{data_type}.out"
-        out_filepath = os.path.join(self.workspace_dir, out_filename)
+        wrapper_file = os.path.join("algorithms", "cuda_wrapper_template.cu")
+        if not os.path.exists(wrapper_file):
+            raise FileNotFoundError(f"Could not find universal wrapper: {wrapper_file}")
+            
+        kernel_file = os.path.join(algo_path, "kernel.cuh")
+        if not os.path.exists(kernel_file):
+            raise FileNotFoundError(f"Could not find algorithm logic: {kernel_file}")
 
-        # Skip compilation if the binary already exists
+        # Use the stripped base type for the binary name to reuse it across different precisions
+        out_filename = f"compiled_bin_{base_data_type}.out"
+        out_filepath = os.path.join(algo_path, out_filename)
+
         if os.path.exists(out_filepath):
-            print(f"[Compiler] Reusing existing binary: {out_filename}")
-            return os.path.abspath(out_filepath)
+            bin_mtime = os.path.getmtime(out_filepath)
+            wrapper_mtime = os.path.getmtime(wrapper_file)
+            kernel_mtime = os.path.getmtime(kernel_file)
+            
+            if bin_mtime > wrapper_mtime and bin_mtime > kernel_mtime:
+                print(f"[Compiler] Reusing existing binary (up to date): {out_filename}")
+                return os.path.abspath(out_filepath)
+            else:
+                print(f"[Compiler] Source code changed. Rebuilding {out_filename}...")
 
-        print(f"[Compiler] Building {exp_id} for data type: {data_type} ...")
+        print(f"[Compiler] Building {algo_path} for type: {base_data_type} ...")
 
-        # Resolve the target source file (CUDA or standard C++)
-        source_file = os.path.join(algo_path, "main.cu")
-        if not os.path.exists(source_file):
-            source_file = os.path.join(algo_path, "main.cpp")
-            if not os.path.exists(source_file):
-                raise FileNotFoundError(f"Could not find main.cu or main.cpp in {algo_path}")
+        compiler = "nvcc"
+        
+        cmd = [
+            compiler, wrapper_file, 
+            "-o", out_filepath, 
+            "-O3", 
+            f"-DDATA_TYPE={cpp_type}", 
+            "-I", algo_path,
+            "-Xcompiler", "-fopenmp"
+        ]
 
-        # Determine compiler based on extension
-        is_cuda = source_file.endswith(".cu")
-        compiler = "nvcc" if is_cuda else "g++"
-
-        # Construct the compilation command
-        # -O3 ensures max optimization
-        cmd = [compiler, source_file, "-o", out_filepath, "-O3", f"-D DATA_TYPE={cpp_type}"]
-
-        # Hardware-specific auto-tuning for NVIDIA GPUs
-        if is_cuda and flags_config == "auto" and gpu_info:
-            # Use the compute capability of the first available GPU (e.g., 8.9 -> 89)
+        if flags_config == "auto" and gpu_info:
             cc = gpu_info[0].get("compute_capability", "8.9").replace(".", "")
             cmd.append(f"-arch=sm_{cc}")
         elif flags_config != "auto":
-            # Append custom flags from the YAML configuration if provided
             cmd.extend(flags_config.split())
 
-        # Execute the compilation process
         try:
             subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             print(f"[Compiler] Successfully built: {out_filepath}")
         except subprocess.CalledProcessError as e:
-            print(f"[Compiler Error] Failed to compile {source_file}")
+            print(f"[Compiler Error] Failed to compile algorithm in {algo_path}")
             print("--- COMPILER OUTPUT ---")
             print(e.stderr)
             print("-----------------------")
@@ -80,35 +91,5 @@ class CompilerEngine:
 
         return os.path.abspath(out_filepath)
 
-
-# Execution block for testing
 if __name__ == "__main__":
-    # Mock data to simulate the orchestrator passing a task
-    mock_task_1 = {
-        "experiment_id": "EXP_001_CUDA_ATOMICS",
-        "algorithm_path": "algorithms/gpu_single/exp_001_cuda_atomics",
-        "data_type": "float32",
-        "compiler_flags": "auto"
-    }
-    
-    mock_task_2 = {
-        "experiment_id": "EXP_001_CUDA_ATOMICS",
-        "algorithm_path": "algorithms/gpu_single/exp_001_cuda_atomics",
-        "data_type": "double",
-        "compiler_flags": "auto"
-    }
-
-    mock_gpu_info = [{"compute_capability": "8.9"}]
-
-    engine = CompilerEngine()
-    
-    try:
-        bin1 = engine.build_executable(mock_task_1, mock_gpu_info)
-        bin2 = engine.build_executable(mock_task_2, mock_gpu_info)
-        
-        print("\nTest Execution:")
-        subprocess.run([bin1])
-        subprocess.run([bin2])
-        
-    except Exception as err:
-        print(err)
+    print("Compilation module ready.")

@@ -29,8 +29,8 @@ class TaskRunner:
         self.topology = topology
         self.global_config = global_config
         
-        self.gpu_temp_threshold = self.global_config.get("cooling_threshold_gpu_c", 45.0)
-        self.cpu_temp_threshold = self.global_config.get("cooling_threshold_cpu_c", 45.0)
+        self.gpu_temp_threshold = self.global_config.get("cooling_threshold_gpu_c", 50.0)
+        self.cpu_temp_threshold = self.global_config.get("cooling_threshold_cpu_c", 65.0)
 
     def _get_max_cpu_temp(self) -> float:
         """Reads the maximum reported CPU temperature from psutil."""
@@ -97,12 +97,15 @@ class TaskRunner:
         """Converts allocation strategy to a comma-separated list of core IDs for taskset."""
         p_cores = self.topology.get("p_cores", [])
         e_cores = self.topology.get("e_cores", [])
+        physical_only = self.topology.get("physical_only", [])
         all_cores = list(range(self.topology.get("logical_cores", 1)))
 
         if strategy == "p_cores_only" and p_cores:
             selected = p_cores
         elif strategy == "e_cores_only" and e_cores:
             selected = e_cores
+        elif strategy == "physical_cores_only" and physical_only:
+            selected = physical_only
         else:
             selected = all_cores
             
@@ -182,36 +185,4 @@ class TaskRunner:
 
 # Execution block for testing
 if __name__ == "__main__":
-    print("Testing Task Runner...")
-    
-    # Mock topology mimicking an i7-13700K
-    mock_topology = {
-        "logical_cores": 24,
-        "p_cores": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-        "e_cores": [16, 17, 18, 19, 20, 21, 22, 23]
-    }
-    
-    mock_config = {
-        "cooling_threshold_gpu_c": 60.0, 
-        "cooling_threshold_cpu_c": 70.0,
-        "polling_interval_ms": 10
-    }
-    
-    mock_task = {
-        "experiment_id": "EXP_001_CUDA_ATOMICS",
-        "cpu_allocation_strategy": "p_cores_only",
-        "gpu_allocation": "0",
-        "use_dedicated_gpu_threads": True,
-        "repetitions": 50,
-        "cuda_block_size": 256
-    }
-    
-    # We will just run the 'ls' command as a dummy binary to test taskset and subprocess
-    dummy_binary = "/bin/ls"
-    dummy_dataset = "/dev/null"
-    
-    runner = TaskRunner(mock_topology, mock_config)
-    results = runner.execute_task(mock_task, dummy_binary, dummy_dataset)
-    
-    print("\n[FINAL MERGED RESULTS]")
-    print(json.dumps(results, indent=2))
+    print("Testing Task Runner directly...")

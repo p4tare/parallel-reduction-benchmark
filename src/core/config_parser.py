@@ -30,42 +30,52 @@ class ConfigParser:
 
     def generate_task_grid(self) -> list:
         """
-        Expands the experiment configurations into a flat list of individual tasks.
-        Each task represents a single run with a specific combination of parameters.
+        Parses all experiments and generates a flat list of tasks based on the Cartesian product
+        of requested hardware and data parameters.
         """
         tasks = []
-        
+        # FIX: We now correctly iterate over self.experiments loaded in __init__
         for exp in self.experiments:
-            # Base parameters that do not change during this experiment
             base_task = {
-                "experiment_id": exp.get("id", "UNKNOWN_EXP"),
+                "experiment_id": exp.get("id", "UNKNOWN"),
                 "algorithm_path": exp.get("algorithm_path", ""),
                 "compiler_flags": exp.get("compiler_flags", "auto"),
                 "repetitions": exp.get("repetitions", 10),
-                "warmup_runs": exp.get("warmup_runs", 3),
-                "data_generation_mode": exp.get("data", {}).get("generation_mode", "random_uniform"),
-                "gpu_allocation": exp.get("hardware", {}).get("gpu_allocation", "all"),
-                "cpu_allocation_strategy": exp.get("hardware", {}).get("cpu_allocation_strategy", "all")
+                "warmup_runs": exp.get("warmup_runs", 3)
             }
 
-            # Extract lists of parameters to form the grid
-            # If a user provides a single value or omits it, we wrap it in a list with a default
-            sizes = exp.get("data", {}).get("sizes", [1000])
-            types = exp.get("data", {}).get("types", ["float32"])
-            dedicated_threads = exp.get("hardware", {}).get("use_dedicated_gpu_threads", [False])
-            block_sizes = exp.get("hardware", {}).get("cuda_block_sizes", [256])
+            data_cfg = exp.get("data", {})
+            hw_cfg = exp.get("hardware", {})
 
-            # Generate Cartesian product (all possible combinations)
-            combinations = itertools.product(sizes, types, dedicated_threads, block_sizes)
+            sizes = data_cfg.get("sizes", [1000000])
+            types = data_cfg.get("types", ["float32"])
             
-            for combo in combinations:
-                task = base_task.copy()
-                task["data_size"] = combo[0]
-                task["data_type"] = combo[1]
-                task["use_dedicated_gpu_threads"] = combo[2]
-                task["cuda_block_size"] = combo[3]
-                tasks.append(task)
-                
+            raw_modes = data_cfg.get("generation_mode", ["random_uniform"])
+            modes = raw_modes if isinstance(raw_modes, list) else [raw_modes]
+
+            gpu_allocs = hw_cfg.get("gpu_allocation", ["0"])
+            gpu_allocs = gpu_allocs if isinstance(gpu_allocs, list) else [gpu_allocs]
+            
+            cpu_allocs = hw_cfg.get("cpu_allocation_strategy", ["all"])
+            ded_threads = hw_cfg.get("use_dedicated_gpu_threads", [False])
+            block_sizes = hw_cfg.get("cuda_block_sizes", [256])
+
+            for size in sizes:
+                for dtype in types:
+                    for mode in modes: 
+                        for gpu_alloc in gpu_allocs:
+                            for cpu_alloc in cpu_allocs:
+                                for ded_thread in ded_threads:
+                                    for b_size in block_sizes:
+                                        task = base_task.copy()
+                                        task["data_size"] = size
+                                        task["data_type"] = dtype
+                                        task["data_generation_mode"] = mode
+                                        task["gpu_allocation"] = gpu_alloc
+                                        task["cpu_allocation_strategy"] = cpu_alloc
+                                        task["use_dedicated_gpu_threads"] = ded_thread
+                                        task["cuda_block_size"] = b_size
+                                        tasks.append(task)
         return tasks
 
     def print_summary(self):
@@ -90,11 +100,14 @@ class ConfigParser:
                 print(f"    Size: {task['data_size']} | Type: {task['data_type']}")
                 print(f"    Dedicated GPU Thread: {task['use_dedicated_gpu_threads']}")
                 print(f"    CUDA Block Size: {task['cuda_block_size']}")
+                print(f"    CPU Strategy: {task['cpu_allocation_strategy']}")
                 print("-" * 40)
         print("=" * 60)
 
-# Execution block for testing
 if __name__ == "__main__":
     test_config_path = "configs/main_experiments.yaml"
-    parser = ConfigParser(test_config_path)
-    parser.print_summary()
+    if os.path.exists(test_config_path):
+        parser = ConfigParser(test_config_path)
+        parser.print_summary()
+    else:
+        print("Run from root directory.")

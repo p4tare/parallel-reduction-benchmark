@@ -4,8 +4,8 @@ global:
   enable_nvml: true
   enable_perf: false
   polling_interval_ms: 10
-  cooling_threshold_gpu_c: 55.0
-  cooling_threshold_cpu_c: 75.0
+  cooling_threshold_gpu_c: 50.0
+  cooling_threshold_cpu_c: 80.0
   orchestrator_core_isolation: true
 
 experiments:
@@ -15,26 +15,26 @@ experiments:
     repetitions: 50
     warmup_runs: 5
     data:
-      sizes: [1000000, 10000000]
+      sizes: [500000000]
       types: ["int32", "float32"]
       generation_mode: "random_uniform"
     hardware:
       gpu_allocation: "0"
-      cpu_allocation_strategy: "p_cores_only"
+      cpu_allocation_strategy: ["all"]
       use_dedicated_gpu_threads: [true, false]
-      cuda_block_sizes: [256, 512]
+      cuda_block_sizes: [512]
 
   - id: "EXP_012_STATIC_EQUAL_HYBRID"
     algorithm_path: "algorithms/hybrid/exp_012_static_equal"
     compiler_flags: "-Xcompiler -fopenmp"
-    repetitions: 100
+    repetitions: 50
     warmup_runs: 5
     data:
-      sizes: [5000000,50000000,500000000]
-      types: ["int32", "int64", "float32", "double"]
+      sizes: [500000000]
+      types: ["int32", "float32"]
       generation_mode: "random_uniform"
     hardware:
       gpu_allocation: "0"
-      cpu_allocation_strategy: ["all", "p_cores_only", "e_cores_only"]
+      cpu_allocation_strategy: ["physical_cores_only", "all"]
       use_dedicated_gpu_threads: [true, false]
-      cuda_block_sizes: [256, 512, 1024]
+      cuda_block_sizes: [512]

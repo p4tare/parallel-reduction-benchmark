@@ -10,7 +10,6 @@ from src.execution.runner import TaskRunner
 from src.output.results_writer import ResultsWriter
 
 def main():
-    # 1. Parse Command Line Arguments
     parser = argparse.ArgumentParser(description="Hybrid Reduction Orchestrator")
     parser.add_argument("--config", type=str, required=True, help="Path to the YAML config file")
     args = parser.parse_args()
@@ -19,11 +18,9 @@ def main():
     print("STARTING HYBRID REDUCTION BENCHMARK SYSTEM")
     print("=" * 60)
 
-    # 2. Initialize Hardware Topology
     topology = SystemTopology()
     topology.print_summary()
 
-    # 3. Parse Configuration
     try:
         config = ConfigParser(args.config)
     except FileNotFoundError:
@@ -39,15 +36,12 @@ def main():
         print("[Main] No tasks generated. Exiting.")
         sys.exit(0)
 
-    # 4. Initialize Subsystems
     data_factory = DataFactory()
     compiler = CompilerEngine()
-    
-    # TaskRunner needs CPU topology specifically for taskset masks
     runner = TaskRunner(topology=topology.cpu_info, global_config=global_settings)
     writer = ResultsWriter(output_base_dir=global_settings.get("output_dir", "results"))
 
-    # Save pre-run hardware state
+
     full_topology_dump = {
         "os": topology.os_info,
         "cpu": topology.cpu_info,
@@ -55,7 +49,6 @@ def main():
     }
     writer.save_system_info(topology_data=full_topology_dump, global_config=global_settings)
 
-    # 5. Main Execution Loop
     all_results = []
     total_tasks = len(tasks)
 
@@ -63,9 +56,9 @@ def main():
         print(f"\n>>> [{idx+1}/{total_tasks}] Executing Task: {task['experiment_id']} "
               f"| Type: {task['data_type']} | Size: {task['data_size']}")
         
-        # Step A: Generate / Stage Data
+        # Step A: Generate / Stage Data and GET GROUND TRUTH SUM
         try:
-            data_path = data_factory.generate_data(
+            data_path, expected_sum = data_factory.generate_data(
                 size=task["data_size"],
                 dtype_str=task["data_type"],
                 mode=task["data_generation_mode"]
@@ -83,9 +76,20 @@ def main():
 
         # Step C: Run and Profile
         result_dict = runner.execute_task(task, binary_path, data_path)
+        
+        # Step D: Automatic Validation
+        cpp_result = result_dict.get("reduction_result", 0.0)
+        result_dict["expected_result"] = expected_sum
+        
+        # We allow a tiny precision variance (0.01%) due to floating point math differences between Python/CPU/GPU
+        tolerance = abs(expected_sum) * 0.0001
+        if abs(cpp_result - expected_sum) <= tolerance or expected_sum == 0.0:
+            result_dict["is_correct"] = True
+        else:
+            result_dict["is_correct"] = False
+            
         all_results.append(result_dict)
 
-    # 6. Save Final Results
     print("\n" + "=" * 60)
     print("ALL TASKS COMPLETED. SAVING RESULTS...")
     print("=" * 60)

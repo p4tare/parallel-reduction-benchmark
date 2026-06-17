@@ -1,0 +1,25 @@
+global:
+  output_dir: "./results"
+  enable_rapl: true
+  enable_nvml: true
+  enable_perf: false
+  polling_interval_ms: 10
+  cooling_threshold_gpu_c: 50.0
+  cooling_threshold_cpu_c: 65.0
+  orchestrator_core_isolation: true
+
+experiments:
+  - id: "EXP_002_SHARED_MEM_SUM"
+    algorithm_path: "algorithms/gpu_single/exp_002_shared_mem_sum"
+    compiler_flags: "auto"
+    repetitions: 2000
+    warmup_runs: 5
+    data:
+      sizes: [100, 100000, 10000000] 
+      types: ["int32", "int64", "float32", "double"] 
+      generation_mode: ["random_uniform", "ones", "zeros", "random_controlled", "random_controlled_2", "random_controlled_4", "sequential"]
+    hardware:
+      gpu_allocation: "0" 
+      cpu_allocation_strategy: ["physical_cores_only"] 
+      use_dedicated_gpu_threads: [false, true]
+      cuda_block_sizes: [256, 512, 1024]
