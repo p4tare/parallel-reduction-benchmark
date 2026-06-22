@@ -1,0 +1,25 @@
+global:
+  output_dir: "./results"
+  enable_rapl: true
+  enable_nvml: true
+  enable_perf: false
+  polling_interval_ms: 10
+  cooling_threshold_gpu_c: 80.0
+  cooling_threshold_cpu_c: 80.0
+  orchestrator_core_isolation: true
+
+experiments:
+  - id: "EXP_012_STATIC_EQUAL"
+    algorithm_path: "algorithms/macro_static/exp_012_static_equal"
+    compiler_flags: "auto"
+    repetitions: 10
+    warmup_runs: 5
+    data:
+      sizes: [1000, 1000000000]
+      types: ["int32", "float32_2"] 
+      generation_mode: ["ones", "0+-5", "0+-5_binary"]
+    hardware:
+      gpu_allocation: ["all"] 
+      cpu_allocation_strategy: ["all", "p_cores_only", "physical_cores_only"]
+      use_dedicated_gpu_threads: [true] 
+      cuda_block_sizes: [32, 128, 2048]

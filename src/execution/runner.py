@@ -4,6 +4,7 @@ import time
 import json
 import subprocess
 import psutil
+import ast
 
 try:
     import pynvml
@@ -48,7 +49,7 @@ class TaskRunner:
                     max_temp = entry.current
         return max_temp
 
-    def _get_max_gpu_temp(self, gpu_allocation: str) -> float:
+    def _get_max_gpu_temp(self, gpu_allocation_str: str) -> float:
         """Reads the maximum temperature across all requested GPUs using NVML."""
         if not NVML_AVAILABLE:
             return 0.0
@@ -58,11 +59,13 @@ class TaskRunner:
             device_count = pynvml.nvmlDeviceGetCount()
             max_temp = 0.0
             
-            # Determine which GPUs to scan
-            if gpu_allocation == "all":
-                gpu_ids = list(range(device_count))
-            else:
-                gpu_ids = [int(gpu_allocation)]
+            # Safely parse the string "[0, 1]" into a list
+            try:
+                gpu_ids = ast.literal_eval(gpu_allocation_str)
+                if not isinstance(gpu_ids, list):
+                    gpu_ids = []
+            except Exception:
+                gpu_ids = []
             
             for i in gpu_ids:
                 if i < device_count:
@@ -76,13 +79,13 @@ class TaskRunner:
         except pynvml.NVMLError:
             return 0.0
 
-    def _enforce_cooldown(self, gpu_allocation: str):
+    def _enforce_cooldown(self, gpu_allocation_str: str):
         """Blocks execution until hardware cools down below target thresholds."""
         print("[Runner] Checking thermal conditions...")
         
         while True:
             cpu_t = self._get_max_cpu_temp()
-            gpu_t = self._get_max_gpu_temp(gpu_allocation)
+            gpu_t = self._get_max_gpu_temp(gpu_allocation_str)
             
             cpu_ok = cpu_t <= self.cpu_temp_threshold or cpu_t == 0.0
             gpu_ok = gpu_t <= self.gpu_temp_threshold or gpu_t == 0.0
@@ -116,11 +119,20 @@ class TaskRunner:
         Executes the binary within the profiler context, enforces limits, 
         and returns a unified dictionary of all metrics.
         """
-        gpu_allocation = str(task.get("gpu_allocation", "0"))
-        target_gpu_id = 0 if gpu_allocation == "all" else int(gpu_allocation)
+        gpu_allocation_str = str(task.get("gpu_allocation", "[]"))
+        
+        try:
+            target_gpu_ids = ast.literal_eval(gpu_allocation_str)
+            if not isinstance(target_gpu_ids, list):
+                target_gpu_ids = [0]
+        except Exception:
+            target_gpu_ids = [0]
+            
+        # Convert list [0, 1] to string "0,1" for the C++ wrapper arguments
+        gpus_arg = ",".join(map(str, target_gpu_ids))
         
         # 1. Wait for hardware to cool down
-        self._enforce_cooldown(gpu_allocation)
+        self._enforce_cooldown(gpu_allocation_str)
         
         # 2. Prepare execution arguments
         affinity_mask = self._build_cpu_affinity_mask(task.get("cpu_allocation_strategy", "all"))
@@ -130,6 +142,7 @@ class TaskRunner:
             "taskset", "-c", affinity_mask,
             binary_path,
             "--data", dataset_path,
+            "--gpus", gpus_arg,
             "--reps", str(task.get("repetitions", 10)),
             "--warmup", str(task.get("warmup_runs", 3)),
             "--dedicated-threads", dedicated_threads_flag,
@@ -138,10 +151,10 @@ class TaskRunner:
         
         print(f"[Runner] Launching: {' '.join(cmd)}")
         
-        # 3. Run with Profiler
+        # 3. Run with Profiler (passing the list of IDs instead of a single ID)
         polling_rate = self.global_config.get("polling_interval_ms", 10)
         
-        with HardwareProfiler(polling_interval_ms=polling_rate, gpu_id=target_gpu_id) as profiler:
+        with HardwareProfiler(polling_interval_ms=polling_rate, gpu_ids=target_gpu_ids) as profiler:
             try:
                 # We expect the C++ code to print a valid JSON string to standard output.
                 process = subprocess.run(

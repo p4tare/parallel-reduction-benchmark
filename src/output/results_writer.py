@@ -1,6 +1,7 @@
 import os
 import csv
 import json
+import re
 from datetime import datetime
 
 class ResultsWriter:
@@ -38,21 +39,32 @@ class ResultsWriter:
 
         path = os.path.join(self.run_dir, "measurements.csv")
         
-        # Extract all unique keys dynamically (some algorithms might return custom metrics)
+        # Extract all unique keys dynamically
         fieldnames = set()
         for r in results_list:
             fieldnames.update(r.keys())
         
         # Sort fields to put the most important ones first
         priority_cols = [
-            "experiment_id", "data_size", "data_type", "cuda_block_size", 
-            "use_dedicated_gpu_threads", "wall_time_s", "cpu_energy_j", "gpu_energy_j"
+            "experiment_id", "data_size", "data_type", "data_generation_mode", 
+            "cuda_block_size", "use_dedicated_gpu_threads", "gpu_allocation", 
+            "wall_time_s", "cpu_energy_j", "gpu_energy_j", "avg_gpu_power_w"
         ]
-        sorted_fields = [f for f in priority_cols if f in fieldnames]
-        sorted_fields += sorted([f for f in fieldnames if f not in sorted_fields])
+        
+        # Dynamically group all Multi-GPU columns (e.g., gpu_0_power_w, gpu_1_energy_j)
+        multi_gpu_cols = [f for f in fieldnames if re.match(r"^gpu_\d+_", f)]
+        multi_gpu_cols = sorted(multi_gpu_cols)
 
+        sorted_fields = [f for f in priority_cols if f in fieldnames]
+        sorted_fields += multi_gpu_cols
+        
+        # Append the rest alphabetically
+        remaining_fields = [f for f in fieldnames if f not in sorted_fields]
+        sorted_fields += sorted(remaining_fields)
+
+        # The 'restval' parameter magically fills missing dictionary keys with "-"
         with open(path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=sorted_fields)
+            writer = csv.DictWriter(f, fieldnames=sorted_fields, restval="-")
             writer.writeheader()
             for row in results_list:
                 writer.writerow(row)

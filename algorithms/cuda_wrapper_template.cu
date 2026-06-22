@@ -7,6 +7,9 @@
 #include <sys/stat.h>
 #include <stdio.h>
 #include <algorithm>
+#include <vector>
+#include <sstream>
+#include <string>
 
 #ifndef DATA_TYPE
 #define DATA_TYPE float
@@ -28,11 +31,31 @@ __device__ inline void customAtomicAdd(int64_t* address, int64_t val) {
     atomicAdd((unsigned long long*)address, (unsigned long long)val);
 }
 
-// Inject user algorithm
+// INJECT USER ALGORITHM
+// (The kernel.cuh file might optionally define IS_HETEROGENEOUS_AWARE)
 #include "kernel.cuh"
+
+// Helper function to parse array of GPUs from string
+std::vector<int> parse_gpu_list(std::string gpu_str) {
+    std::vector<int> gpus;
+    gpu_str.erase(std::remove(gpu_str.begin(), gpu_str.end(), '['), gpu_str.end());
+    gpu_str.erase(std::remove(gpu_str.begin(), gpu_str.end(), ']'), gpu_str.end());
+    gpu_str.erase(std::remove(gpu_str.begin(), gpu_str.end(), ' '), gpu_str.end());
+    
+    std::stringstream ss(gpu_str);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        if (!token.empty()) {
+            gpus.push_back(std::stoi(token));
+        }
+    }
+    if (gpus.empty()) gpus.push_back(0); // Fallback
+    return gpus;
+}
 
 int main(int argc, char** argv) {
     std::string data_path = "";
+    std::string gpus_raw = "0";
     int reps = 10;
     int warmup = 3;
     bool dedicated_threads = false;
@@ -41,6 +64,7 @@ int main(int argc, char** argv) {
     for(int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if(arg == "--data" && i+1 < argc) data_path = argv[++i];
+        else if(arg == "--gpus" && i+1 < argc) gpus_raw = argv[++i];
         else if(arg == "--reps" && i+1 < argc) reps = std::stoi(argv[++i]);
         else if(arg == "--warmup" && i+1 < argc) warmup = std::stoi(argv[++i]);
         else if(arg == "--dedicated-threads" && i+1 < argc) dedicated_threads = (std::stoi(argv[++i]) == 1);
@@ -49,26 +73,16 @@ int main(int argc, char** argv) {
 
     if (data_path.empty()) { std::cerr << "{\"error\": \"No data path\"}" << std::endl; return 1; }
 
+    std::vector<int> target_gpus = parse_gpu_list(gpus_raw);
+    int num_gpus = target_gpus.size();
+
     struct stat sb;
     if (stat(data_path.c_str(), &sb) == -1) { std::cerr << "{\"error\": \"Failed to stat file\"}" << std::endl; return 1; }
     size_t total_elements = sb.st_size / sizeof(DATA_TYPE);
 
-    // Dynamic Chunk Sizing - Ask GPU for free memory
-    size_t free_vram, total_vram;
-    CUDA_CHECK(cudaMemGetInfo(&free_vram, &total_vram));
+    // Hard limit chunk size to protect RAM
+    size_t current_chunk_size = std::min(total_elements, (size_t)250000000);
     
-    // We use 50% of free VRAM to be safe, but cap at 1GB chunks to save host RAM
-    size_t max_chunk_bytes = free_vram / 2;
-    size_t max_elements_per_chunk = max_chunk_bytes / sizeof(DATA_TYPE);
-    size_t hard_limit_elements = 250000000; // ~1GB max chunk
-    
-    if (max_elements_per_chunk > hard_limit_elements) {
-        max_elements_per_chunk = hard_limit_elements;
-    }
-
-    size_t current_chunk_size = std::min(total_elements, max_elements_per_chunk);
-    
-    // Allocate CPU RAM buffer
     DATA_TYPE* h_buffer = new DATA_TYPE[current_chunk_size];
     FILE* file = fopen(data_path.c_str(), "rb");
     if (!file) { std::cerr << "{\"error\": \"Failed to open file\"}" << std::endl; delete[] h_buffer; return 1; }
@@ -77,21 +91,59 @@ int main(int argc, char** argv) {
     double final_result = 0;
     size_t elements_read = 0;
 
-    // Out-of-Core Processing Loop
     while (elements_read < total_elements) {
         size_t elements_to_read = std::min(current_chunk_size, total_elements - elements_read);
-        
-        // Disk I/O is NOT timed
         fread(h_buffer, sizeof(DATA_TYPE), elements_to_read, file);
         
-        double chunk_time = 0;
-        double chunk_result = 0;
+        double max_chunk_time_us = 0;
+        double sum_chunk_result = 0;
+
+// =======================================================================================
+// PATH A: NEW MULTI-NODE HETEROGENEOUS EXECUTION (CPU + MULTIPLE GPUs)
+// =======================================================================================
+#ifdef IS_HETEROGENEOUS_AWARE
         
-        // Timer runs inside this function, covering RAM->VRAM, kernel, and VRAM->RAM
-        execute_algorithm(h_buffer, elements_to_read, reps, warmup, block_size, dedicated_threads, chunk_time, chunk_result);
+        int total_workers = 1 + num_gpus; // 1 CPU worker + N GPU workers
+        omp_set_num_threads(total_workers);
         
-        total_time_us += chunk_time;
-        final_result += chunk_result;
+        #pragma omp parallel
+        {
+            int thread_id = omp_get_thread_num();
+            bool is_cpu_worker = (thread_id == 0);
+            int my_gpu_id = -1;
+            
+            if (!is_cpu_worker) {
+                my_gpu_id = target_gpus[thread_id - 1]; // Offset by 1 for GPUs
+                CUDA_CHECK(cudaSetDevice(my_gpu_id));
+            }
+            
+            double thread_time = 0;
+            double thread_result = 0;
+            
+            execute_algorithm(h_buffer, elements_to_read, reps, warmup, block_size, dedicated_threads, 
+                              thread_id, total_workers, is_cpu_worker, my_gpu_id, thread_time, thread_result);
+            
+            #pragma omp critical
+            {
+                sum_chunk_result += thread_result;
+                if (thread_time > max_chunk_time_us) {
+                    max_chunk_time_us = thread_time; 
+                }
+            }
+        }
+
+// =======================================================================================
+// PATH B: LEGACY SINGLE-GPU EXECUTION (Backward Compatibility)
+// =======================================================================================
+#else
+        CUDA_CHECK(cudaSetDevice(target_gpus[0])); // Simply use the first requested GPU
+        execute_algorithm(h_buffer, elements_to_read, reps, warmup, block_size, dedicated_threads, 
+                          max_chunk_time_us, sum_chunk_result);
+
+#endif
+
+        total_time_us += max_chunk_time_us;
+        final_result += sum_chunk_result;
         elements_read += elements_to_read;
     }
 
@@ -102,7 +154,11 @@ int main(int argc, char** argv) {
     std::cout << "\"cpp_cpu_time_us\": " << total_time_us << ", ";
     std::cout << "\"gpu_kernel_time_us\": " << total_time_us << ", ";
     std::cout << "\"reduction_result\": " << final_result << ", ";
+#ifdef IS_HETEROGENEOUS_AWARE
     std::cout << "\"openmp_max_threads\": " << omp_get_max_threads();
+#else
+    std::cout << "\"openmp_max_threads\": 1";
+#endif
     std::cout << "}" << std::endl;
 
     return 0;
