@@ -94,6 +94,7 @@ def main():
     print("ALL TASKS COMPLETED. SAVING RESULTS...")
     print("=" * 60)
     writer.save_results_csv(all_results)
+    writer.save_execution_traces(all_results)
     print("[Main] Execution finished successfully.")
 
 if __name__ == "__main__":

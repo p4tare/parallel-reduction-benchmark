@@ -146,8 +146,11 @@ class TaskRunner:
             "--reps", str(task.get("repetitions", 10)),
             "--warmup", str(task.get("warmup_runs", 3)),
             "--dedicated-threads", dedicated_threads_flag,
-            "--block-size", str(task.get("cuda_block_size", 256))
+            "--block-size", str(task.get("cuda_block_size", 256)),
+            "--trace", "1"
         ]
+
+
         
         print(f"[Runner] Launching: {' '.join(cmd)}")
         
@@ -174,27 +177,26 @@ class TaskRunner:
         
         # 5. Parse C++ JSON metrics
         algo_metrics = {}
+        trace_lines = []
+        
         for line in raw_output.splitlines():
             line = line.strip()
+            # If line is JSON, parse it
             if line.startswith("{") and line.endswith("}"):
                 try:
                     algo_metrics = json.loads(line)
-                    break
+                    continue # Skip adding JSON to the trace log
                 except json.JSONDecodeError:
                     pass
-
-        # If C++ didn't return JSON, mock it for now
-        if not algo_metrics:
-            algo_metrics = {
-                "cpp_parse_warning": "No JSON found in C++ output",
-                "cpp_raw_stdout": raw_output.strip()
-            }
+            # Everything else is considered a trace log from C++ printf
+            if line:
+                trace_lines.append(line)
 
         # 6. Merge configurations and metrics
         final_result = {**task, **energy_metrics, **algo_metrics}
+        final_result["trace_log"] = "\n".join(trace_lines) # Inject trace log into result dictionary
         
         return final_result
-
 
 # Execution block for testing
 if __name__ == "__main__":

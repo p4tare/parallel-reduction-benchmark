@@ -1,0 +1,55 @@
+global:
+  output_dir: "./results"
+  enable_rapl: true
+  enable_nvml: true
+  enable_perf: false
+  polling_interval_ms: 10
+  cooling_threshold_gpu_c: 100.0
+  cooling_threshold_cpu_c: 100.0
+  orchestrator_core_isolation: true
+
+experiments:
+  - id: "EXP_012_STATIC_EQUAL"
+    algorithm_path: "algorithms/macro_static/exp_012_static_equal"
+    compiler_flags: "auto"
+    repetitions: 10
+    warmup_runs: 5
+    data:
+      sizes: [1000, 1000000, 100000000]
+      types: ["int32", "float32_2", "float32_4"] 
+      generation_mode: ["ones", "0+-5_binary"]
+    hardware:
+      gpu_allocation: ["all"]
+      cpu_allocation_strategy: ["all", "p_cores_only", "physical_cores_only"]
+      use_dedicated_gpu_threads: [true] 
+      cuda_block_sizes: [32, 1024]
+
+  - id: "EXP_013_WEIGHTED_PROFILOMETRIC"
+    algorithm_path: "algorithms/macro_static/exp_013_weighted_profilometric"
+    compiler_flags: "auto"
+    repetitions: 10
+    warmup_runs: 5
+    data:
+      sizes: [1000, 1000000, 100000000]
+      types: ["int32", "float32_2", "float32_4"] 
+      generation_mode: ["ones", "0+-5_binary"]
+    hardware:
+      gpu_allocation: ["all"] 
+      cpu_allocation_strategy: ["all", "p_cores_only", "physical_cores_only"]
+      use_dedicated_gpu_threads: [true]
+      cuda_block_sizes: [32, 1024]
+
+  - id: "EXP_015_CENTRALIZED_TASK_QUEUE"
+    algorithm_path: "algorithms/macro_dynamic/exp_015_centralized_task_queue"
+    compiler_flags: "auto"
+    repetitions: 10
+    warmup_runs: 5
+    data:
+      sizes: [1000, 1000000, 100000000]
+      types: ["int32", "float32_2", "float32_4"] 
+      generation_mode: ["ones", "0+-5_binary"]
+    hardware:
+      gpu_allocation: ["all"] 
+      cpu_allocation_strategy: ["all", "p_cores_only", "physical_cores_only"]
+      use_dedicated_gpu_threads: [true]
+      cuda_block_sizes: [32, 1024]

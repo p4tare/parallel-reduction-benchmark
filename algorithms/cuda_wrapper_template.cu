@@ -60,6 +60,7 @@ int main(int argc, char** argv) {
     int warmup = 3;
     bool dedicated_threads = false;
     int block_size = 256;
+    bool do_trace = false; // NEW TRACE FLAG
 
     for(int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -69,6 +70,7 @@ int main(int argc, char** argv) {
         else if(arg == "--warmup" && i+1 < argc) warmup = std::stoi(argv[++i]);
         else if(arg == "--dedicated-threads" && i+1 < argc) dedicated_threads = (std::stoi(argv[++i]) == 1);
         else if(arg == "--block-size" && i+1 < argc) block_size = std::stoi(argv[++i]);
+        else if(arg == "--trace" && i+1 < argc) do_trace = (std::stoi(argv[++i]) == 1);
     }
 
     if (data_path.empty()) { std::cerr << "{\"error\": \"No data path\"}" << std::endl; return 1; }
@@ -80,7 +82,6 @@ int main(int argc, char** argv) {
     if (stat(data_path.c_str(), &sb) == -1) { std::cerr << "{\"error\": \"Failed to stat file\"}" << std::endl; return 1; }
     size_t total_elements = sb.st_size / sizeof(DATA_TYPE);
 
-    // Hard limit chunk size to protect RAM
     size_t current_chunk_size = std::min(total_elements, (size_t)250000000);
     
     DATA_TYPE* h_buffer = new DATA_TYPE[current_chunk_size];
@@ -98,12 +99,8 @@ int main(int argc, char** argv) {
         double max_chunk_time_us = 0;
         double sum_chunk_result = 0;
 
-// =======================================================================================
-// PATH A: NEW MULTI-NODE HETEROGENEOUS EXECUTION (CPU + MULTIPLE GPUs)
-// =======================================================================================
 #ifdef IS_HETEROGENEOUS_AWARE
-        
-        int total_workers = 1 + num_gpus; // 1 CPU worker + N GPU workers
+        int total_workers = 1 + num_gpus; 
         omp_set_num_threads(total_workers);
         
         #pragma omp parallel
@@ -113,15 +110,16 @@ int main(int argc, char** argv) {
             int my_gpu_id = -1;
             
             if (!is_cpu_worker) {
-                my_gpu_id = target_gpus[thread_id - 1]; // Offset by 1 for GPUs
+                my_gpu_id = target_gpus[thread_id - 1]; 
                 CUDA_CHECK(cudaSetDevice(my_gpu_id));
             }
             
             double thread_time = 0;
             double thread_result = 0;
             
+            // ADDED do_trace FLAG TO SIGNATURE
             execute_algorithm(h_buffer, elements_to_read, reps, warmup, block_size, dedicated_threads, 
-                              thread_id, total_workers, is_cpu_worker, my_gpu_id, thread_time, thread_result);
+                              thread_id, total_workers, is_cpu_worker, my_gpu_id, do_trace, thread_time, thread_result);
             
             #pragma omp critical
             {
@@ -131,15 +129,10 @@ int main(int argc, char** argv) {
                 }
             }
         }
-
-// =======================================================================================
-// PATH B: LEGACY SINGLE-GPU EXECUTION (Backward Compatibility)
-// =======================================================================================
 #else
-        CUDA_CHECK(cudaSetDevice(target_gpus[0])); // Simply use the first requested GPU
+        CUDA_CHECK(cudaSetDevice(target_gpus[0])); 
         execute_algorithm(h_buffer, elements_to_read, reps, warmup, block_size, dedicated_threads, 
                           max_chunk_time_us, sum_chunk_result);
-
 #endif
 
         total_time_us += max_chunk_time_us;
