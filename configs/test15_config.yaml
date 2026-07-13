@@ -1,0 +1,40 @@
+global:
+  output_dir: "./results"
+  enable_rapl: true
+  enable_nvml: true
+  enable_perf: false
+  polling_interval_ms: 10
+  cooling_threshold_gpu_c: 100.0
+  cooling_threshold_cpu_c: 100.0
+  orchestrator_core_isolation: true
+
+experiments:
+  - id: "EXP_016_DISTRIBUTED_WORK_STEALING"
+    algorithm_path: "algorithms/macro_dynamic/exp_016_distributed_work_stealing"
+    compiler_flags: "auto"
+    repetitions: 100
+    warmup_runs: 2
+    data:
+      sizes: [1000000000]
+      types: ["float32_3"] 
+      generation_mode: ["0+-5_binary"]
+    hardware:
+      gpu_allocation: ["all"] 
+      cpu_allocation_strategy: ["all"]
+      use_dedicated_gpu_threads: [true]
+      cuda_block_sizes: [32, 1024]
+
+  - id: "EXP_017_ADAPTIVE_CHUNK_SIZING"
+    algorithm_path: "algorithms/macro_dynamic/exp_017_adaptive_chunk_sizing"
+    compiler_flags: "auto"
+    repetitions: 100
+    warmup_runs: 2
+    data:
+      sizes: [1000000000]
+      types: ["float32_3"] 
+      generation_mode: ["0+-5_binary"]
+    hardware:
+      gpu_allocation: ["all"] 
+      cpu_allocation_strategy: ["all"]
+      use_dedicated_gpu_threads: [true]
+      cuda_block_sizes: [32, 1024]
