@@ -1,7 +1,12 @@
 #ifndef KERNEL_CUH
 #define KERNEL_CUH
 
-// Naive Shared Memory Reduction Kernel
+#define MAX_WORKERS 32
+static DATA_TYPE* d_inputs[MAX_WORKERS];
+static DATA_TYPE* d_outputs[MAX_WORKERS];
+static cudaStream_t streams[MAX_WORKERS];
+
+// Naiwny Shared Memory Reduction Kernel
 template <typename T>
 __global__ void shared_mem_sum_kernel(const T* input, T* output, size_t n) {
     extern __shared__ char shared_mem[];
@@ -21,62 +26,63 @@ __global__ void shared_mem_sum_kernel(const T* input, T* output, size_t n) {
     }
 
     if (tid == 0) {
-        customAtomicAdd(output, sdata[0]);
+        atomicAdd(output, sdata[0]); // U¿ywa wersji wspieranej przez Wrapper
     }
 }
 
-// Wrapper execution function
-void execute_algorithm(const DATA_TYPE* h_input, size_t n, int reps, int warmup, int block_size, bool dedicated_threads, double& avg_time_us, double& final_result) {
+// ----------------------------------------------------------------------------------
+// 1. FAZA SETUP - Alokacja i inicjalizacja na starcie
+// ----------------------------------------------------------------------------------
+void algorithm_setup(DATA_TYPE* h_buffer, size_t num_elements, int block_size, bool dedicated_threads, 
+                     int worker_id, int total_workers, bool is_cpu_worker, int gpu_id, bool do_trace) {
     
-    DATA_TYPE* d_input = nullptr;
-    DATA_TYPE* d_output = nullptr;
-    
-    // Allocate VRAM. We know 'n' is safe because the main wrapper checked cudaMemGetInfo.
-    CUDA_CHECK(cudaMalloc(&d_input, n * sizeof(DATA_TYPE)));
-    CUDA_CHECK(cudaMalloc(&d_output, sizeof(DATA_TYPE)));
+    // EXP002 to najprostszy stary algorytm - dzia³a tylko na pierwszej karcie GPU (Worker 1)
+    if (!is_cpu_worker && worker_id == 1) {
+        CUDA_CHECK(cudaMalloc(&d_inputs[worker_id], num_elements * sizeof(DATA_TYPE)));
+        CUDA_CHECK(cudaMalloc(&d_outputs[worker_id], sizeof(DATA_TYPE)));
+        CUDA_CHECK(cudaStreamCreate(&streams[worker_id]));
+    }
+}
 
-    int num_blocks = (n + block_size - 1) / block_size;
+// ----------------------------------------------------------------------------------
+// 2. FAZA OBLICZEÑ (Wywo³ywana przez Wrapper w pêtli. Wrapper zajmuje siê mierzeniem czasu)
+// ----------------------------------------------------------------------------------
+void algorithm_execute(DATA_TYPE* h_buffer, size_t num_elements, int block_size, bool dedicated_threads, 
+                       int worker_id, int total_workers, bool is_cpu_worker, int gpu_id, bool do_trace, 
+                       double& out_result) {
+    
+    out_result = 0.0;
+    
+    // Ignorujemy procesor i inne karty - algorytm 002 u¿ywa tylko jednego GPU
+    if (is_cpu_worker || worker_id != 1) return;
+
+    DATA_TYPE zero = 0;
+    CUDA_CHECK(cudaMemcpyAsync(d_outputs[worker_id], &zero, sizeof(DATA_TYPE), cudaMemcpyHostToDevice, streams[worker_id]));
+    CUDA_CHECK(cudaMemcpyAsync(d_inputs[worker_id], h_buffer, num_elements * sizeof(DATA_TYPE), cudaMemcpyHostToDevice, streams[worker_id]));
+
+    int num_blocks = (num_elements + block_size - 1) / block_size;
     size_t smem_size = block_size * sizeof(DATA_TYPE);
 
-    cudaStream_t stream;
-    CUDA_CHECK(cudaStreamCreate(&stream));
+    shared_mem_sum_kernel<<<num_blocks, block_size, smem_size, streams[worker_id]>>>(
+        d_inputs[worker_id], d_outputs[worker_id], num_elements
+    );
 
     DATA_TYPE h_gpu_output = 0;
-    double total_time_ms = 0;
+    CUDA_CHECK(cudaMemcpyAsync(&h_gpu_output, d_outputs[worker_id], sizeof(DATA_TYPE), cudaMemcpyDeviceToHost, streams[worker_id]));
+    CUDA_CHECK(cudaStreamSynchronize(streams[worker_id]));
 
-    // Measurement loop
-    for (int r = 0; r < warmup + reps; r++) {
-        CUDA_CHECK(cudaMemsetAsync(d_output, 0, sizeof(DATA_TYPE), stream));
-        CUDA_CHECK(cudaStreamSynchronize(stream));
+    out_result = static_cast<double>(h_gpu_output);
+}
 
-        // START TIMER
-        auto start_time = std::chrono::high_resolution_clock::now();
-
-        // 1. Transfer RAM -> VRAM (Measured)
-        CUDA_CHECK(cudaMemcpyAsync(d_input, h_input, n * sizeof(DATA_TYPE), cudaMemcpyHostToDevice, stream));
-
-        // 2. Kernel Execution (Measured)
-        shared_mem_sum_kernel<<<num_blocks, block_size, smem_size, stream>>>(d_input, d_output, n);
-
-        // 3. Transfer VRAM -> RAM (Measured)
-        CUDA_CHECK(cudaMemcpyAsync(&h_gpu_output, d_output, sizeof(DATA_TYPE), cudaMemcpyDeviceToHost, stream));
-        CUDA_CHECK(cudaStreamSynchronize(stream));
-
-        // STOP TIMER
-        auto end_time = std::chrono::high_resolution_clock::now();
-        
-        if (r >= warmup) {
-            std::chrono::duration<double> duration = end_time - start_time;
-            total_time_ms += (duration.count() * 1000.0);
-        }
+// ----------------------------------------------------------------------------------
+// 3. FAZA TEARDOWN - Sprz¹tanie pamiêci na koñcu
+// ----------------------------------------------------------------------------------
+void algorithm_teardown(int worker_id, bool is_cpu_worker, int gpu_id) {
+    if (!is_cpu_worker && worker_id == 1) {
+        CUDA_CHECK(cudaFree(d_inputs[worker_id]));
+        CUDA_CHECK(cudaFree(d_outputs[worker_id]));
+        CUDA_CHECK(cudaStreamDestroy(streams[worker_id]));
     }
-
-    final_result = static_cast<double>(h_gpu_output);
-    avg_time_us = (total_time_ms * 1000.0) / reps;
-
-    CUDA_CHECK(cudaStreamDestroy(stream));
-    CUDA_CHECK(cudaFree(d_input));
-    CUDA_CHECK(cudaFree(d_output));
 }
 
 #endif

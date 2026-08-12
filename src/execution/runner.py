@@ -12,7 +12,6 @@ try:
 except ImportError:
     NVML_AVAILABLE = False
 
-# Fallback import logic for testing
 try:
     from src.execution.energy_profilers import HardwareProfiler
 except ModuleNotFoundError:
@@ -21,120 +20,74 @@ except ModuleNotFoundError:
 
 
 class TaskRunner:
-    """
-    Executes a single task (compiled C++ binary).
-    Handles thermal throttling prevention, CPU affinity (taskset), 
-    and merges execution time with energy profiling data.
-    """
     def __init__(self, topology: dict, global_config: dict):
         self.topology = topology
         self.global_config = global_config
-        
         self.gpu_temp_threshold = self.global_config.get("cooling_threshold_gpu_c", 50.0)
         self.cpu_temp_threshold = self.global_config.get("cooling_threshold_cpu_c", 65.0)
 
     def _get_max_cpu_temp(self) -> float:
-        """Reads the maximum reported CPU temperature from psutil."""
-        if not hasattr(psutil, "sensors_temperatures"):
-            return 0.0
-            
+        if not hasattr(psutil, "sensors_temperatures"): return 0.0
         temps = psutil.sensors_temperatures()
-        if not temps:
-            return 0.0
-            
+        if not temps: return 0.0
         max_temp = 0.0
         for name, entries in temps.items():
             for entry in entries:
-                if entry.current > max_temp:
-                    max_temp = entry.current
+                if entry.current > max_temp: max_temp = entry.current
         return max_temp
 
     def _get_max_gpu_temp(self, gpu_allocation_str: str) -> float:
-        """Reads the maximum temperature across all requested GPUs using NVML."""
-        if not NVML_AVAILABLE:
-            return 0.0
-            
+        if not NVML_AVAILABLE: return 0.0
         try:
             pynvml.nvmlInit()
             device_count = pynvml.nvmlDeviceGetCount()
             max_temp = 0.0
-            
-            # Safely parse the string "[0, 1]" into a list
             try:
                 gpu_ids = ast.literal_eval(gpu_allocation_str)
-                if not isinstance(gpu_ids, list):
-                    gpu_ids = []
-            except Exception:
-                gpu_ids = []
-            
+                if not isinstance(gpu_ids, list): gpu_ids = []
+            except Exception: gpu_ids = []
             for i in gpu_ids:
                 if i < device_count:
                     handle = pynvml.nvmlDeviceGetHandleByIndex(i)
                     temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
-                    if temp > max_temp:
-                        max_temp = float(temp)
-                        
+                    if temp > max_temp: max_temp = float(temp)
             pynvml.nvmlShutdown()
             return max_temp
         except pynvml.NVMLError:
             return 0.0
 
     def _enforce_cooldown(self, gpu_allocation_str: str):
-        """Blocks execution until hardware cools down below target thresholds."""
         print("[Runner] Checking thermal conditions...")
-        
         while True:
             cpu_t = self._get_max_cpu_temp()
             gpu_t = self._get_max_gpu_temp(gpu_allocation_str)
-            
-            cpu_ok = cpu_t <= self.cpu_temp_threshold or cpu_t == 0.0
-            gpu_ok = gpu_t <= self.gpu_temp_threshold or gpu_t == 0.0
-            
-            if cpu_ok and gpu_ok:
+            if (cpu_t <= self.cpu_temp_threshold or cpu_t == 0.0) and (gpu_t <= self.gpu_temp_threshold or gpu_t == 0.0):
                 break
-                
             print(f"  -> Waiting for cooldown. Current: CPU {cpu_t}C, GPU {gpu_t}C. Target: CPU <= {self.cpu_temp_threshold}C, GPU <= {self.gpu_temp_threshold}C")
             time.sleep(2.0)
 
     def _build_cpu_affinity_mask(self, strategy: str) -> str:
-        """Converts allocation strategy to a comma-separated list of core IDs for taskset."""
         p_cores = self.topology.get("p_cores", [])
         e_cores = self.topology.get("e_cores", [])
         physical_only = self.topology.get("physical_only", [])
         all_cores = list(range(self.topology.get("logical_cores", 1)))
 
-        if strategy == "p_cores_only" and p_cores:
-            selected = p_cores
-        elif strategy == "e_cores_only" and e_cores:
-            selected = e_cores
-        elif strategy == "physical_cores_only" and physical_only:
-            selected = physical_only
-        else:
-            selected = all_cores
-            
+        if strategy == "p_cores_only" and p_cores: selected = p_cores
+        elif strategy == "e_cores_only" and e_cores: selected = e_cores
+        elif strategy == "physical_cores_only" and physical_only: selected = physical_only
+        else: selected = all_cores
         return ",".join(map(str, selected))
 
-    def execute_task(self, task: dict, binary_path: str, dataset_path: str) -> dict:
-        """
-        Executes the binary within the profiler context, enforces limits, 
-        and returns a unified dictionary of all metrics.
-        """
+    def execute_task(self, task: dict, binary_path: str, dataset_path: str) -> list:
         gpu_allocation_str = str(task.get("gpu_allocation", "[]"))
-        
         try:
             target_gpu_ids = ast.literal_eval(gpu_allocation_str)
-            if not isinstance(target_gpu_ids, list):
-                target_gpu_ids = [0]
-        except Exception:
-            target_gpu_ids = [0]
+            if not isinstance(target_gpu_ids, list): target_gpu_ids = [0]
+        except Exception: target_gpu_ids = [0]
             
-        # Convert list [0, 1] to string "0,1" for the C++ wrapper arguments
         gpus_arg = ",".join(map(str, target_gpu_ids))
-        
-        # 1. Wait for hardware to cool down
         self._enforce_cooldown(gpu_allocation_str)
         
-        # 2. Prepare execution arguments
         affinity_mask = self._build_cpu_affinity_mask(task.get("cpu_allocation_strategy", "all"))
         dedicated_threads_flag = "1" if task.get("use_dedicated_gpu_threads") else "0"
         
@@ -150,54 +103,49 @@ class TaskRunner:
             "--trace", "1"
         ]
 
-
-        
         print(f"[Runner] Launching: {' '.join(cmd)}")
-        
-        # 3. Run with Profiler (passing the list of IDs instead of a single ID)
         polling_rate = self.global_config.get("polling_interval_ms", 10)
         
         with HardwareProfiler(polling_interval_ms=polling_rate, gpu_ids=target_gpu_ids) as profiler:
             try:
-                # We expect the C++ code to print a valid JSON string to standard output.
-                process = subprocess.run(
-                    cmd, 
-                    stdout=subprocess.PIPE, 
-                    stderr=subprocess.PIPE, 
-                    text=True, 
-                    check=True
-                )
+                process = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
                 raw_output = process.stdout
             except subprocess.CalledProcessError as e:
                 print(f"[Runner Error] Execution failed. STDERR:\n{e.stderr}")
-                raw_output = "{}"
+                raw_output = "[]"
                 
-        # 4. Gather Energy metrics
         energy_metrics = profiler.get_results()
         
-        # 5. Parse C++ JSON metrics
-        algo_metrics = {}
+        # Parse JSON array output
+        algo_metrics_list = []
         trace_lines = []
         
+        try:
+            start_idx = raw_output.find("[")
+            end_idx = raw_output.rfind("]")
+            if start_idx != -1 and end_idx != -1:
+                json_str = raw_output[start_idx:end_idx+1]
+                algo_metrics_list = json.loads(json_str)
+        except Exception as e:
+            print(f"[Runner Error] Failed to parse JSON Array: {e}")
+
+        # Extract textual traces
         for line in raw_output.splitlines():
             line = line.strip()
-            # If line is JSON, parse it
-            if line.startswith("{") and line.endswith("}"):
-                try:
-                    algo_metrics = json.loads(line)
-                    continue # Skip adding JSON to the trace log
-                except json.JSONDecodeError:
-                    pass
-            # Everything else is considered a trace log from C++ printf
-            if line:
-                trace_lines.append(line)
+            if not line.startswith("[") and not line.startswith("{") and not line.endswith("}") and not line.endswith("]"):
+                if line: trace_lines.append(line)
 
-        # 6. Merge configurations and metrics
-        final_result = {**task, **energy_metrics, **algo_metrics}
-        final_result["trace_log"] = "\n".join(trace_lines) # Inject trace log into result dictionary
+        final_results = []
+        trace_log_str = "\n".join(trace_lines)
         
-        return final_result
+        # If C++ failed to return metrics, ensure we at least return one row of errors
+        if not algo_metrics_list:
+            algo_metrics_list = [{"iteration": 1, "error": "C++ execution failed or returned no JSON"}]
 
-# Execution block for testing
-if __name__ == "__main__":
-    print("Testing Task Runner directly...")
+        # Append static data & energy to EACH repetition
+        for metric_dict in algo_metrics_list:
+            res = {**task, **energy_metrics, **metric_dict}
+            res["trace_log"] = trace_log_str
+            final_results.append(res)
+            
+        return final_results

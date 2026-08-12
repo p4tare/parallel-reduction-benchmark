@@ -4,6 +4,7 @@
 #include <iostream>
 #include <chrono>
 #include <atomic>
+#include <omp.h>
 
 // Shared Atomic Counters
 static std::atomic<size_t> global_task_offset{0};
@@ -40,10 +41,8 @@ void execute_algorithm(DATA_TYPE* h_buffer, size_t num_elements, int repetitions
     double total_ms = 0.0;
     DATA_TYPE final_worker_val = 0;
 
-    // Allocate max possible memory to handle the largest initial chunks.
-    // We cap it to avoid Out-of-Memory crashes on VRAM for giant matrices.
     size_t MAX_ALLOC_SIZE = num_elements; 
-    if (MAX_ALLOC_SIZE > 50000000) MAX_ALLOC_SIZE = 50000000; // 50M hard cap
+    if (MAX_ALLOC_SIZE > 50000000) MAX_ALLOC_SIZE = 50000000; 
 
     DATA_TYPE* d_input = nullptr;
     DATA_TYPE* d_result = nullptr;
@@ -63,7 +62,7 @@ void execute_algorithm(DATA_TYPE* h_buffer, size_t num_elements, int repetitions
         if (worker_id == 0) {
             global_task_offset.store(0);
             global_accumulated_result.store(0);
-            if (is_trace_iter) printf("[TRACE] --- QUEUE RESET. ADAPTIVE CHUNK SIZING INITIALIZED ---\n");
+            if (is_trace_iter) printf("[TRACE] --- QUEUE RESET. HARDWARE-AWARE ADAPTIVE CHUNK SIZING INITIALIZED ---\n");
         }
         #pragma omp barrier
 
@@ -78,19 +77,17 @@ void execute_algorithm(DATA_TYPE* h_buffer, size_t num_elements, int repetitions
             size_t current_offset = global_task_offset.load();
             size_t my_elements = 0;
             
-            // Loop until we safely claim an adaptive chunk atomically
             while (true) {
                 if (current_offset >= num_elements) break;
                 
                 size_t remaining = num_elements - current_offset;
                 
-                // THE ADAPTIVE LOGIC: Chunk gets exponentially smaller as we reach the end
+                // Zmniejszanie paczki logarytmicznie (Adaptive)
                 size_t adaptive_chunk = remaining / (2 * total_workers);
                 
                 if (adaptive_chunk < 1000) adaptive_chunk = remaining; 
                 if (adaptive_chunk > MAX_ALLOC_SIZE) adaptive_chunk = MAX_ALLOC_SIZE;
 
-                // Attempt to claim it
                 if (global_task_offset.compare_exchange_weak(current_offset, current_offset + adaptive_chunk)) {
                     my_elements = adaptive_chunk;
                     break;
@@ -101,26 +98,42 @@ void execute_algorithm(DATA_TYPE* h_buffer, size_t num_elements, int repetitions
             size_t my_offset = current_offset;
             chunks_processed++;
 
-            if (is_trace_iter && chunks_processed <= 2) {
-                size_t remaining = num_elements - current_offset;
-                const char* role = is_cpu_worker ? "CPU" : "GPU";
-                printf("[TRACE] Worker %d (%s) evaluated queue. Remaining elements: %zu. Adapted chunk size: %zu.\n", 
-                       worker_id, role, remaining, my_elements);
-                printf("[TRACE] Worker %d (%s) pulled ADAPTIVE chunk at offset %zu\n", 
-                       worker_id, role, my_offset);
-                
-                if (!is_cpu_worker) {
-                    printf("[TRACE] Worker %d (GPU_%d) executing pipeline: PCIe (RAM->VRAM) -> Kernel Launch -> PCIe (VRAM->RAM)...\n", worker_id, gpu_id);
-                } else {
-                    printf("[TRACE] Worker %d (CPU) fetching elements from RAM and accumulating internally...\n", worker_id);
-                }
-            }
-
+            // ==============================================================
+            // CPU EXECUTION: HARDWARE-AWARE NESTED PARALLELISM
+            // ==============================================================
             if (is_cpu_worker) {
+                int num_procs_available = omp_get_num_procs(); 
+                int num_gpus = total_workers - 1;
+                
+                int nested_threads = num_procs_available;
+                if (dedicated_threads) {
+                    nested_threads = num_procs_available - num_gpus;
+                    if (nested_threads < 1) nested_threads = 1; 
+                }
+
+                if (is_trace_iter && chunks_processed <= 2) {
+                    size_t remaining = num_elements - current_offset;
+                    printf("[TRACE] Worker 0 (CPU_MASTER) evaluated queue. Remaining: %zu. Adapted chunk: %zu.\n", remaining, my_elements);
+                    printf("[TRACE] Worker 0 (CPU_MASTER) Spawning %d nested OMP threads for chunk math!\n", nested_threads);
+                }
+
                 DATA_TYPE chunk_sum = 0;
-                for (size_t j = 0; j < my_elements; ++j) { chunk_sum += h_buffer[my_offset + j]; }
+                
+                #pragma omp parallel for simd num_threads(nested_threads) reduction(+:chunk_sum)
+                for (size_t j = 0; j < my_elements; ++j) { 
+                    chunk_sum += h_buffer[my_offset + j]; 
+                }
                 local_iteration_sum += chunk_sum;
-            } else {
+            } 
+            // ==============================================================
+            // GPU EXECUTION
+            // ==============================================================
+            else {
+                if (is_trace_iter && chunks_processed <= 2) {
+                    size_t remaining = num_elements - current_offset;
+                    printf("[TRACE] Worker %d (GPU_%d) evaluated queue. Remaining: %zu. Adapted chunk: %zu.\n", worker_id, gpu_id, remaining, my_elements);
+                }
+
                 DATA_TYPE zero = 0;
                 CUDA_CHECK(cudaMemcpy(d_result, &zero, sizeof(DATA_TYPE), cudaMemcpyHostToDevice));
                 CUDA_CHECK(cudaMemcpy(d_input, h_buffer + my_offset, my_elements * sizeof(DATA_TYPE), cudaMemcpyHostToDevice));
@@ -147,11 +160,11 @@ void execute_algorithm(DATA_TYPE* h_buffer, size_t num_elements, int repetitions
         }
 
         if (is_trace_iter) {
-            const char* role = is_cpu_worker ? "CPU" : "GPU";
+            const char* role = is_cpu_worker ? "CPU_MASTER" : "GPU";
             if (is_cpu_worker) {
-                printf("[TRACE] Worker %d (%s) finished iteration. Processed ADAPTIVE chunks: %d. Sent local sum to RAM global counter.\n", worker_id, role, chunks_processed);
+                printf("[TRACE] Worker %d (%s) finished iteration. Processed ADAPTIVE chunks: %d. Sent local sum to RAM.\n", worker_id, role, chunks_processed);
             } else {
-                printf("[TRACE] Worker %d (GPU_%d) finished iteration. Processed ADAPTIVE chunks: %d. Sent local sum to RAM global counter.\n", worker_id, gpu_id, chunks_processed);
+                printf("[TRACE] Worker %d (GPU_%d) finished iteration. Processed ADAPTIVE chunks: %d. Sent local sum to RAM.\n", worker_id, gpu_id, chunks_processed);
             }
         }
 

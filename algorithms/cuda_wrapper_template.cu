@@ -24,18 +24,30 @@
         } \
     } while(0)
 
-__device__ inline void customAtomicAdd(int32_t* address, int32_t val) { atomicAdd(address, val); }
-__device__ inline void customAtomicAdd(float* address, float val) { atomicAdd(address, val); }
-__device__ inline void customAtomicAdd(double* address, double val) { atomicAdd(address, val); }
-__device__ inline void customAtomicAdd(int64_t* address, int64_t val) {
-    atomicAdd((unsigned long long*)address, (unsigned long long)val);
+// =====================================================================
+// UNIWERSALNE OPERACJE ATOMOWE (WIDOCZNE DLA KAZDEGO ALGORYTMU)
+// =====================================================================
+__device__ inline void atomicAdd(float2* address, float2 val) {
+    atomicAdd(&(address->x), val.x);
+    atomicAdd(&(address->y), val.y);
+}
+__device__ inline void atomicAdd(float3* address, float3 val) {
+    atomicAdd(&(address->x), val.x);
+    atomicAdd(&(address->y), val.y);
+    atomicAdd(&(address->z), val.z);
+}
+__device__ inline void atomicAdd(float4* address, float4 val) {
+    atomicAdd(&(address->x), val.x);
+    atomicAdd(&(address->y), val.y);
+    atomicAdd(&(address->z), val.z);
+    atomicAdd(&(address->w), val.w);
 }
 
-// INJECT USER ALGORITHM
-// (The kernel.cuh file might optionally define IS_HETEROGENEOUS_AWARE)
+// =====================================================================
+// WSTRZYKNIÊCIE ALGORYTMU (Oczekujemy: setup, execute, teardown)
+// =====================================================================
 #include "kernel.cuh"
 
-// Helper function to parse array of GPUs from string
 std::vector<int> parse_gpu_list(std::string gpu_str) {
     std::vector<int> gpus;
     gpu_str.erase(std::remove(gpu_str.begin(), gpu_str.end(), '['), gpu_str.end());
@@ -45,11 +57,9 @@ std::vector<int> parse_gpu_list(std::string gpu_str) {
     std::stringstream ss(gpu_str);
     std::string token;
     while (std::getline(ss, token, ',')) {
-        if (!token.empty()) {
-            gpus.push_back(std::stoi(token));
-        }
+        if (!token.empty()) gpus.push_back(std::stoi(token));
     }
-    if (gpus.empty()) gpus.push_back(0); // Fallback
+    if (gpus.empty()) gpus.push_back(0); 
     return gpus;
 }
 
@@ -60,7 +70,7 @@ int main(int argc, char** argv) {
     int warmup = 3;
     bool dedicated_threads = false;
     int block_size = 256;
-    bool do_trace = false; // NEW TRACE FLAG
+    bool do_trace = false;
 
     for(int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -81,78 +91,86 @@ int main(int argc, char** argv) {
     struct stat sb;
     if (stat(data_path.c_str(), &sb) == -1) { std::cerr << "{\"error\": \"Failed to stat file\"}" << std::endl; return 1; }
     size_t total_elements = sb.st_size / sizeof(DATA_TYPE);
-
     size_t current_chunk_size = std::min(total_elements, (size_t)250000000);
     
     DATA_TYPE* h_buffer = new DATA_TYPE[current_chunk_size];
     FILE* file = fopen(data_path.c_str(), "rb");
     if (!file) { std::cerr << "{\"error\": \"Failed to open file\"}" << std::endl; delete[] h_buffer; return 1; }
 
-    double total_time_us = 0;
-    double final_result = 0;
+    // Wektory do zapisywania pojedynczych iteracji
+    std::vector<double> iter_max_times(reps, 0.0);
+    std::vector<double> iter_sum_results(reps, 0.0);
+    
     size_t elements_read = 0;
+    int total_workers = 1 + num_gpus; 
+    omp_set_num_threads(total_workers);
 
     while (elements_read < total_elements) {
         size_t elements_to_read = std::min(current_chunk_size, total_elements - elements_read);
         fread(h_buffer, sizeof(DATA_TYPE), elements_to_read, file);
         
-        double max_chunk_time_us = 0;
-        double sum_chunk_result = 0;
-
-#ifdef IS_HETEROGENEOUS_AWARE
-        int total_workers = 1 + num_gpus; 
-        omp_set_num_threads(total_workers);
-        
         #pragma omp parallel
         {
             int thread_id = omp_get_thread_num();
             bool is_cpu_worker = (thread_id == 0);
-            int my_gpu_id = -1;
+            int my_gpu_id = (!is_cpu_worker) ? target_gpus[thread_id - 1] : -1;
             
-            if (!is_cpu_worker) {
-                my_gpu_id = target_gpus[thread_id - 1]; 
-                CUDA_CHECK(cudaSetDevice(my_gpu_id));
+            if (!is_cpu_worker) { CUDA_CHECK(cudaSetDevice(my_gpu_id)); }
+            
+            // 1. Inicjalizacja sprzêtowa w izolacji
+            algorithm_setup(h_buffer, elements_to_read, block_size, dedicated_threads, thread_id, total_workers, is_cpu_worker, my_gpu_id, do_trace);
+            
+            // 2. Faza rozgrzewki sprzêtu (Warmup)
+            for (int w = 0; w < warmup; ++w) {
+                double dummy = 0;
+                algorithm_execute(h_buffer, elements_to_read, block_size, dedicated_threads, thread_id, total_workers, is_cpu_worker, my_gpu_id, false, dummy);
+                #pragma omp barrier
             }
             
-            double thread_time = 0;
-            double thread_result = 0;
-            
-            // ADDED do_trace FLAG TO SIGNATURE
-            execute_algorithm(h_buffer, elements_to_read, reps, warmup, block_size, dedicated_threads, 
-                              thread_id, total_workers, is_cpu_worker, my_gpu_id, do_trace, thread_time, thread_result);
-            
-            #pragma omp critical
-            {
-                sum_chunk_result += thread_result;
-                if (thread_time > max_chunk_time_us) {
-                    max_chunk_time_us = thread_time; 
+            // 3. Faza Ostrego Pomiaru (Reps)
+            for (int r = 0; r < reps; ++r) {
+                double res = 0;
+                bool trace_this_iter = (do_trace && r == 0); // Trace only the very first measured iteration
+                
+                #pragma omp barrier // Synchronize all workers before the stopwatch starts
+                auto start_time = std::chrono::high_resolution_clock::now();
+                
+                algorithm_execute(h_buffer, elements_to_read, block_size, dedicated_threads, thread_id, total_workers, is_cpu_worker, my_gpu_id, trace_this_iter, res);
+                
+                auto stop_time = std::chrono::high_resolution_clock::now();
+                double time_us = std::chrono::duration_cast<std::chrono::microseconds>(stop_time - start_time).count();
+                
+                #pragma omp critical
+                {
+                    iter_sum_results[r] += res;
+                    if (time_us > iter_max_times[r]) {
+                        iter_max_times[r] = time_us;
+                    }
                 }
+                #pragma omp barrier
             }
+            
+            // 4. Sprz¹tanie
+            algorithm_teardown(thread_id, is_cpu_worker, my_gpu_id);
         }
-#else
-        CUDA_CHECK(cudaSetDevice(target_gpus[0])); 
-        execute_algorithm(h_buffer, elements_to_read, reps, warmup, block_size, dedicated_threads, 
-                          max_chunk_time_us, sum_chunk_result);
-#endif
 
-        total_time_us += max_chunk_time_us;
-        final_result += sum_chunk_result;
         elements_read += elements_to_read;
     }
 
     fclose(file);
     delete[] h_buffer;
 
-    std::cout << "{";
-    std::cout << "\"cpp_cpu_time_us\": " << total_time_us << ", ";
-    std::cout << "\"gpu_kernel_time_us\": " << total_time_us << ", ";
-    std::cout << "\"reduction_result\": " << final_result << ", ";
-#ifdef IS_HETEROGENEOUS_AWARE
-    std::cout << "\"openmp_max_threads\": " << omp_get_max_threads();
-#else
-    std::cout << "\"openmp_max_threads\": 1";
-#endif
-    std::cout << "}" << std::endl;
+    // JSON Dump: Format tablicy [ {}, {}, ... ]
+    std::cout << "\n[";
+    for(int r = 0; r < reps; ++r) {
+        std::cout << "{\"iteration\": " << (r + 1) 
+                  << ", \"cpp_cpu_time_us\": " << iter_max_times[r]
+                  << ", \"gpu_kernel_time_us\": " << iter_max_times[r]
+                  << ", \"reduction_result\": " << iter_sum_results[r] 
+                  << ", \"openmp_max_threads\": " << omp_get_max_threads() << "}";
+        if(r < reps - 1) std::cout << ", ";
+    }
+    std::cout << "]" << std::endl;
 
     return 0;
 }

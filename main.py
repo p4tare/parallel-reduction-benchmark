@@ -41,7 +41,6 @@ def main():
     runner = TaskRunner(topology=topology.cpu_info, global_config=global_settings)
     writer = ResultsWriter(output_base_dir=global_settings.get("output_dir", "results"))
 
-
     full_topology_dump = {
         "os": topology.os_info,
         "cpu": topology.cpu_info,
@@ -74,21 +73,22 @@ def main():
             print(f"  [Error] Compilation failed: {e}")
             continue
 
-        # Step C: Run and Profile
-        result_dict = runner.execute_task(task, binary_path, data_path)
+        # Step C: Run and Profile (Now returns a LIST of dicts, one for each repetition)
+        result_dicts = runner.execute_task(task, binary_path, data_path)
         
-        # Step D: Automatic Validation
-        cpp_result = result_dict.get("reduction_result", 0.0)
-        result_dict["expected_result"] = expected_sum
-        
-        # We allow a tiny precision variance (0.01%) due to floating point math differences between Python/CPU/GPU
-        tolerance = abs(expected_sum) * 0.0001
-        if abs(cpp_result - expected_sum) <= tolerance or expected_sum == 0.0:
-            result_dict["is_correct"] = True
-        else:
-            result_dict["is_correct"] = False
+        # Step D: Automatic Validation & Flattening
+        for result_dict in result_dicts:
+            cpp_result = result_dict.get("reduction_result", 0.0)
+            result_dict["expected_result"] = expected_sum
             
-        all_results.append(result_dict)
+            # We allow a tiny precision variance (0.01%) due to floating point math differences
+            tolerance = abs(expected_sum) * 0.0001
+            if abs(cpp_result - expected_sum) <= tolerance or expected_sum == 0.0:
+                result_dict["is_correct"] = True
+            else:
+                result_dict["is_correct"] = False
+                
+            all_results.append(result_dict)
 
     print("\n" + "=" * 60)
     print("ALL TASKS COMPLETED. SAVING RESULTS...")
