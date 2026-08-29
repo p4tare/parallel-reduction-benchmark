@@ -562,10 +562,14 @@ private:
         DeviceMetrics metrics;
         metrics.device_id = cfg_.device_id;
         metrics.elements = count;
-        const auto host_start = host_clock::now();
+        metrics.chunks = 1;
+        auto* h_output = static_cast<T*>(h_output_pinned_);
 
+        // Event construction is setup/instrumentation overhead, not part of the
+        // device-resident solution interval (same convention as reduce_sync).
         EventPair kernel;
         EventPair d2h;
+        const auto host_start = host_clock::now();
         kernel.record_start(streams_[0]);
         CUDA_CHECK(cub_reduce<T, Op>(
             d_temp_[0],
@@ -577,10 +581,9 @@ private:
         ));
         kernel.record_stop(streams_[0]);
 
-        T result{};
         d2h.record_start(streams_[0]);
         CUDA_CHECK(cudaMemcpyAsync(
-            &result,
+            h_output,
             d_output,
             sizeof(T),
             cudaMemcpyDeviceToHost,
@@ -593,8 +596,7 @@ private:
         metrics.kernel_us = kernel.elapsed_us();
         metrics.d2h_us = d2h.elapsed_us();
         metrics.total_us = std::chrono::duration<double, std::micro>(host_end - host_start).count();
-        metrics.chunks = 1;
-        return PartialResult{make_value(result), metrics};
+        return PartialResult{make_value(*h_output), metrics};
     }
 
     template <typename T, ReductionOperation Op>
