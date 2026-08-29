@@ -564,20 +564,24 @@ private:
         auto* d_input = static_cast<T*>(d_inputs_[0]);
         auto* d_output = static_cast<T*>(d_outputs_[0]);
 
+        DeviceMetrics metrics;
+        metrics.device_id = cfg_.device_id;
+        metrics.elements = count;
+        metrics.chunks = 1;
+
         if (!device_resident_loaded_) {
+            const auto upload_start = host_clock::now();
             CUDA_CHECK(cudaMemcpy(
                 d_input,
                 host_data,
                 count * sizeof(T),
                 cudaMemcpyHostToDevice
             ));
+            const auto upload_end = host_clock::now();
+            metrics.h2d_us =
+                std::chrono::duration<double, std::micro>(upload_end - upload_start).count();
             device_resident_loaded_ = true;
         }
-
-        DeviceMetrics metrics;
-        metrics.device_id = cfg_.device_id;
-        metrics.elements = count;
-        metrics.chunks = 1;
         auto* h_output = static_cast<T*>(h_output_pinned_);
 
         // Event construction is setup/instrumentation overhead, not part of the
