@@ -356,8 +356,11 @@ private:
     }
 
     void setup_pipeline() {
-        const std::size_t chunk_capacity =
-            std::max<std::size_t>(1, (cfg_.max_elements + cfg_.pipeline_chunks - 1) / cfg_.pipeline_chunks);
+        pipeline_chunk_capacity_ = cfg_.pipeline_chunk_elements > 0
+            ? std::max<std::size_t>(1, std::min(cfg_.max_elements, cfg_.pipeline_chunk_elements))
+            : std::max<std::size_t>(1, (cfg_.max_elements + cfg_.pipeline_chunks - 1) / cfg_.pipeline_chunks);
+        pipeline_max_chunks_ =
+            std::max<std::size_t>(1, (cfg_.max_elements + pipeline_chunk_capacity_ - 1) / pipeline_chunk_capacity_);
         streams_.resize(cfg_.pipeline_streams);
         d_inputs_.resize(cfg_.pipeline_streams, nullptr);
         d_outputs_.resize(cfg_.pipeline_streams, nullptr);
@@ -368,17 +371,17 @@ private:
         h_pipeline_inputs_.resize(cfg_.pipeline_streams, nullptr);
         for (int s = 0; s < cfg_.pipeline_streams; ++s) {
             CUDA_CHECK(cudaStreamCreateWithFlags(&streams_[s], cudaStreamNonBlocking));
-            CUDA_CHECK(cudaMalloc(&d_inputs_[s], chunk_capacity * element_size_));
+            CUDA_CHECK(cudaMalloc(&d_inputs_[s], pipeline_chunk_capacity_ * element_size_));
             CUDA_CHECK(cudaMalloc(&d_outputs_[s], element_size_));
-            CUDA_CHECK(cudaHostAlloc(&h_pipeline_inputs_[s], chunk_capacity * element_size_, cudaHostAllocPortable));
-            setup_backend_storage(s, chunk_capacity);
+            CUDA_CHECK(cudaHostAlloc(&h_pipeline_inputs_[s], pipeline_chunk_capacity_ * element_size_, cudaHostAllocPortable));
+            setup_backend_storage(s, pipeline_chunk_capacity_);
         }
         CUDA_CHECK(cudaHostAlloc(
-            &h_pipeline_results_, static_cast<std::size_t>(cfg_.pipeline_chunks) * element_size_,
+            &h_pipeline_results_, pipeline_max_chunks_ * element_size_,
             cudaHostAllocPortable
         ));
-        pipeline_events_.reserve(static_cast<std::size_t>(cfg_.pipeline_chunks) * 3);
-        for (int i = 0; i < cfg_.pipeline_chunks * 3; ++i) {
+        pipeline_events_.reserve(pipeline_max_chunks_ * 3);
+        for (std::size_t i = 0; i < pipeline_max_chunks_ * 3; ++i) {
             pipeline_events_.push_back(std::make_unique<EventPair>());
         }
     }
@@ -540,27 +543,31 @@ private:
     template <typename T, ReductionOperation Op>
     PartialResult reduce_pipeline(const T* host_data, std::size_t count) {
         CUDA_CHECK(cudaSetDevice(cfg_.device_id));
-        const std::size_t chunk_size = (count + cfg_.pipeline_chunks - 1) / cfg_.pipeline_chunks;
+        const std::size_t chunk_size = pipeline_chunk_capacity_;
+        const std::size_t chunk_count = (count + chunk_size - 1) / chunk_size;
+        if (chunk_count > pipeline_max_chunks_) {
+            throw std::logic_error("async pipeline chunk count exceeds prepared capacity");
+        }
         auto* host_results = static_cast<T*>(h_pipeline_results_);
         DeviceMetrics metrics;
         metrics.device_id = cfg_.device_id;
         const auto host_start = host_clock::now();
-        int used_chunks = 0;
+        std::size_t used_chunks = 0;
 
-        for (int c = 0; c < cfg_.pipeline_chunks; ++c) {
-            const std::size_t offset = static_cast<std::size_t>(c) * chunk_size;
+        for (std::size_t c = 0; c < chunk_count; ++c) {
+            const std::size_t offset = c * chunk_size;
             if (offset >= count) break;
             const std::size_t n = std::min(chunk_size, count - offset);
-            const int slot = c % cfg_.pipeline_streams;
+            const int slot = static_cast<int>(c % static_cast<std::size_t>(cfg_.pipeline_streams));
             auto stream = streams_[slot];
             auto* d_input = static_cast<T*>(d_inputs_[slot]);
             auto* d_output = static_cast<T*>(d_outputs_[slot]);
             auto* h_staging = static_cast<T*>(h_pipeline_inputs_[slot]);
-            EventPair& h2d = *pipeline_events_[static_cast<std::size_t>(c) * 3];
-            EventPair& kernel = *pipeline_events_[static_cast<std::size_t>(c) * 3 + 1];
-            EventPair& d2h = *pipeline_events_[static_cast<std::size_t>(c) * 3 + 2];
+            EventPair& h2d = *pipeline_events_[c * 3];
+            EventPair& kernel = *pipeline_events_[c * 3 + 1];
+            EventPair& d2h = *pipeline_events_[c * 3 + 2];
 
-            if (c >= cfg_.pipeline_streams) CUDA_CHECK(cudaStreamSynchronize(stream));
+            if (c >= static_cast<std::size_t>(cfg_.pipeline_streams)) CUDA_CHECK(cudaStreamSynchronize(stream));
             const auto staging_start = host_clock::now();
             std::memcpy(h_staging, host_data + offset, n * sizeof(T));
             const auto staging_end = host_clock::now();
@@ -586,9 +593,9 @@ private:
         T result = reduction_identity<T, Op>();
         for (int c = 0; c < used_chunks; ++c) {
             result = reduction_combine<T, Op>(result, host_results[c]);
-            metrics.h2d_us += pipeline_events_[static_cast<std::size_t>(c) * 3]->elapsed_us();
-            metrics.kernel_us += pipeline_events_[static_cast<std::size_t>(c) * 3 + 1]->elapsed_us();
-            metrics.d2h_us += pipeline_events_[static_cast<std::size_t>(c) * 3 + 2]->elapsed_us();
+            metrics.h2d_us += pipeline_events_[c * 3]->elapsed_us();
+            metrics.kernel_us += pipeline_events_[c * 3 + 1]->elapsed_us();
+            metrics.d2h_us += pipeline_events_[c * 3 + 2]->elapsed_us();
         }
         metrics.chunks = static_cast<std::size_t>(used_chunks);
         metrics.elements = count;
@@ -609,6 +616,8 @@ private:
     void* h_output_pinned_{nullptr};
     std::vector<void*> h_pipeline_inputs_;
     void* h_pipeline_results_{nullptr};
+    std::size_t pipeline_chunk_capacity_{1};
+    std::size_t pipeline_max_chunks_{1};
     std::vector<std::unique_ptr<EventPair>> pipeline_events_;
 };
 
