@@ -116,7 +116,7 @@ experiments:
       cpu_thread_policy: one_thread_per_core
       gpu_sets: [each]
       gpu_control_mode: dedicated
-      memory_policy: interleave
+      memory_policy: default
 
   # Scheduler tuning uses both one-GPU and complete multi-GPU configurations so one
   # parameter set is selected robustly rather than overfitted to a single topology.
