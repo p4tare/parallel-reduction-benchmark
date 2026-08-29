@@ -59,9 +59,9 @@ system_baselines:
   stream_timeout_s: 180
 
 experiments:
-  - id: transfer_path_float32
+  - id: transfer_cpu_float32
     operations: [sum]
-    datasets:
+    datasets: &transfer_float32_datasets
       - {size: 1000000, dtype: float32, distribution: uniform, seed: 42101, low: -1.0, high: 1.0,
          quantization: {mode: binary_fraction, bits: 8}}
       - {size: 10000000, dtype: float32, distribution: uniform, seed: 42101, low: -1.0, high: 1.0,
@@ -70,8 +70,20 @@ experiments:
          quantization: {mode: binary_fraction, bits: 8}}
       - {size: 1000000000, dtype: float32, distribution: uniform, seed: 42101, low: -1.0, high: 1.0,
          quantization: {mode: binary_fraction, bits: 8}}
+
     algorithms:
       - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  - id: transfer_gpu_float32
+    operations: [sum]
+    datasets: *transfer_float32_datasets
+    algorithms:
       - {id: gpu_cub}
       - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunk_elements: 16777216}}
       - {id: gpu_cub_device_resident}
@@ -82,15 +94,27 @@ experiments:
       gpu_control_mode: dedicated
       memory_policy: default
 
-  - id: transfer_path_int64
+  - id: transfer_cpu_int64
     operations: [sum]
-    datasets:
+    datasets: &transfer_int64_datasets
       - {size: 1000000, dtype: int64, distribution: integers, seed: 42201, low: -1000000, high: 1000000}
       - {size: 10000000, dtype: int64, distribution: integers, seed: 42201, low: -1000000, high: 1000000}
       - {size: 100000000, dtype: int64, distribution: integers, seed: 42201, low: -1000000, high: 1000000}
       - {size: 1000000000, dtype: int64, distribution: integers, seed: 42201, low: -1000000, high: 1000000}
+
     algorithms:
       - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  - id: transfer_gpu_int64
+    operations: [sum]
+    datasets: *transfer_int64_datasets
+    algorithms:
       - {id: gpu_cub}
       - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunk_elements: 16777216}}
       - {id: gpu_cub_device_resident}
