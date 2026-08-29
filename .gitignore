@@ -1,0 +1,253 @@
+# ============================================================
+# reduction_benchmark
+# .gitignore
+# ============================================================
+
+
+# ------------------------------------------------------------
+# Build directories
+# ------------------------------------------------------------
+build/
+build-*/
+cmake-build-*/
+out/
+bin/
+obj/
+
+
+# ------------------------------------------------------------
+# CMake generated files
+# ------------------------------------------------------------
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+Makefile
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+_deps/
+
+
+# ------------------------------------------------------------
+# Compiled C / C++ / CUDA artifacts
+# ------------------------------------------------------------
+*.o
+*.obj
+*.lo
+
+*.a
+*.lib
+*.la
+
+*.so
+*.so.*
+*.dylib
+*.dll
+
+*.exe
+*.out
+*.app
+
+*.ptx
+*.cubin
+*.fatbin
+
+
+# ------------------------------------------------------------
+# Debug / profiling artifacts
+# ------------------------------------------------------------
+*.d
+*.gcda
+*.gcno
+*.gcov
+*.prof
+*.profraw
+*.profdata
+
+*.nsys-rep
+*.qdrep
+*.sqlite
+*.ncu-rep
+
+gmon.out
+
+
+# ------------------------------------------------------------
+# Crash dumps / runtime leftovers
+# ------------------------------------------------------------
+core
+core.*
+*.core
+
+*.pid
+*.pid.lock
+
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+
+# ------------------------------------------------------------
+# Benchmark results
+# ------------------------------------------------------------
+results/
+results_*/
+benchmark_results/
+benchmark_results_*/
+runs/
+runs_*/
+output/
+outputs/
+
+*.csv
+*.tsv
+
+*.jsonl
+*.ndjson
+
+*.log
+*.trace
+
+
+# ------------------------------------------------------------
+# Large generated datasets / binary data
+# ------------------------------------------------------------
+data/generated/
+datasets/generated/
+
+*.bin
+*.dat
+*.raw
+
+
+# ------------------------------------------------------------
+# Temporary benchmark files
+# ------------------------------------------------------------
+tmp/
+temp/
+cache/
+.cache/
+
+benchmark_tmp/
+benchmark_cache/
+
+
+# ------------------------------------------------------------
+# Python
+# ------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+.venv/
+venv/
+env/
+ENV/
+
+
+# ------------------------------------------------------------
+# Jupyter
+# ------------------------------------------------------------
+.ipynb_checkpoints/
+
+
+# ------------------------------------------------------------
+# IDE / editor
+# ------------------------------------------------------------
+.vscode/
+.idea/
+
+*.code-workspace
+
+.vs/
+
+.project
+.cproject
+.settings/
+
+
+# ------------------------------------------------------------
+# OS-generated files
+# ------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+
+Thumbs.db
+Desktop.ini
+
+
+# ------------------------------------------------------------
+# Local environment / machine-specific configuration
+# ------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+local/
+.local/
+
+config/local/
+configs/local/
+
+*.local.yaml
+*.local.yml
+*.local.json
+
+
+# ------------------------------------------------------------
+# Credentials / private keys
+# ------------------------------------------------------------
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+credentials.json
+secrets.json
+secrets.yaml
+secrets.yml
+
+
+# ------------------------------------------------------------
+# Backup files
+# ------------------------------------------------------------
+*.bak
+*.backup
+*.old
+*.orig
+
+
+# ------------------------------------------------------------
+# Optional generated reports
+# ------------------------------------------------------------
+reports/generated/
+plots/generated/
+figures/generated/
+
+
+# ------------------------------------------------------------
+# Keep source/configuration files tracked
+# ------------------------------------------------------------
+!configs/
+!configs/**/*.yaml
+!configs/**/*.yml
+!configs/**/*.json
+
+!scripts/
+!scripts/**/*.py
+!scripts/**/*.sh
+
+!docs/
+!README.md

@@ -1,0 +1,2 @@
+[console_scripts]
+prbench = prbench.cli:main

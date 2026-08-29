@@ -1,0 +1,1108 @@
+-- The CXX compiler identification is GNU 13.4.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/x86_64-linux-gnu-g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- The CUDA compiler identification is NVIDIA 12.4.131 with host compiler GNU 13.4.0
+-- Detecting CUDA compiler ABI info
+-- Detecting CUDA compiler ABI info - done
+-- Check for working CUDA compiler: /usr/bin/nvcc - skipped
+-- Detecting CUDA compile features
+-- Detecting CUDA compile features - done
+-- Found CUDAToolkit: /usr/include (found version "12.4.131")
+-- Configuring done (3.3s)
+-- Generating done (0.1s)
+-- Build files have been written to: /home/macierz/s188615/reduction_benchmark/build
+[ 42%] Building CXX object CMakeFiles/prbench-worker.dir/native/src/main.cpp.o
+[ 42%] Building CXX object CMakeFiles/prbench-worker.dir/native/src/cli.cpp.o
+[ 42%] Building CXX object CMakeFiles/prbench-worker.dir/native/src/dataset.cpp.o
+[ 71%] Building CXX object CMakeFiles/prbench-worker.dir/native/src/cpu_backend.cpp.o
+[ 85%] Building CXX object CMakeFiles/prbench-worker.dir/native/src/strategy.cpp.o
+[ 85%] Building CUDA object CMakeFiles/prbench-worker.dir/native/src/gpu_backend.cu.o
+[100%] Linking CXX executable prbench-worker
+[100%] Built target prbench-worker
+{
+  "cpu_core_classes": {
+    "homogeneous": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47
+    ]
+  },
+  "cpu_load_percent": 0.0,
+  "cuda_visible_devices": null,
+  "dataset_capacity": [
+    {
+      "available_ram_bytes_at_preflight": 195919933440,
+      "configured_ram_limit_bytes": 40229379276,
+      "dataset_size": 2097152,
+      "dtype": "int64",
+      "size_bytes": 16777216
+    },
+    {
+      "available_ram_bytes_at_preflight": 195919933440,
+      "configured_ram_limit_bytes": 40229379276,
+      "dataset_size": 1048576,
+      "dtype": "float32",
+      "size_bytes": 4194304
+    },
+    {
+      "available_ram_bytes_at_preflight": 195919933440,
+      "configured_ram_limit_bytes": 40229379276,
+      "dataset_size": 4194304,
+      "dtype": "float32",
+      "size_bytes": 16777216
+    }
+  ],
+  "fatal": [],
+  "gpu_compute_processes": {
+    "0": [],
+    "1": []
+  },
+  "gpu_energy_diagnostics": [
+    {
+      "gpu_id": 0,
+      "name": "Quadro RTX 8000",
+      "power_usage_sample_w": 32.857,
+      "power_usage_supported": true,
+      "total_energy_counter_sample_mj": 8073078699,
+      "total_energy_counter_supported": true
+    },
+    {
+      "gpu_id": 1,
+      "name": "Quadro RTX 8000",
+      "power_usage_sample_w": 27.311,
+      "power_usage_supported": true,
+      "total_energy_counter_sample_mj": 7619104024,
+      "total_energy_counter_supported": true
+    }
+  ],
+  "gpu_graphics_processes": {
+    "0": [],
+    "1": []
+  },
+  "gpu_ids": [
+    0,
+    1
+  ],
+  "gpu_memory_capacity": [
+    {
+      "algorithm_id": "hybrid_static_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "dcf29408586889993448",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "dcf29408586889993448",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "69e5e2857f847b9f2b22",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "69e5e2857f847b9f2b22",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "5e10d1e6e67734a76069",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "5e10d1e6e67734a76069",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled_async",
+      "estimate_kind": "upper_bound",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "0d8f05b0ad515cb358fc",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled_async",
+      "estimate_kind": "upper_bound",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "0d8f05b0ad515cb358fc",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_cub",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "90fe2a890571ab41729b",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled_async",
+      "estimate_kind": "upper_bound",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "1fa0afef21fde4452a59",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled_async",
+      "estimate_kind": "upper_bound",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "1fa0afef21fde4452a59",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "57f2deaf50294e3402de",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "57f2deaf50294e3402de",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "6b904f8ea05e7f483652",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "6b904f8ea05e7f483652",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_dynamic_adaptive",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "26fff602aee1e63453a7",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_dynamic_adaptive",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "26fff602aee1e63453a7",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "8c32c386ed201bb487d2",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "8c32c386ed201bb487d2",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_cub",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "3e687ef3121b80b4f4a3",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "d131bce9c86edf04e36d",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "d131bce9c86edf04e36d",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "b0c51628febb9577be13",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "b0c51628febb9577be13",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "d99e6fd753c3a9e178b2",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "d99e6fd753c3a9e178b2",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled_async",
+      "estimate_kind": "upper_bound",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "f6832a58f6c5a885a5d0",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled_async",
+      "estimate_kind": "upper_bound",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "f6832a58f6c5a885a5d0",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "8ed1f67189dc6b5dcf5e",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "8ed1f67189dc6b5dcf5e",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_dynamic_adaptive",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "2e15c41576780f993155",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_dynamic_adaptive",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "2e15c41576780f993155",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled_async",
+      "estimate_kind": "upper_bound",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "ba815c93f65850fbd0ee",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled_async",
+      "estimate_kind": "upper_bound",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "ba815c93f65850fbd0ee",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "fcfff752fe1640fca7f1",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "fcfff752fe1640fca7f1",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled_async",
+      "estimate_kind": "upper_bound",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "7a9b7a26d74f72d53a7c",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled_async",
+      "estimate_kind": "upper_bound",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "7a9b7a26d74f72d53a7c",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_dynamic_adaptive",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "d6702b19b8e74db26c3c",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_dynamic_adaptive",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "d6702b19b8e74db26c3c",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "7ef7e7f6532d43cfea38",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "7ef7e7f6532d43cfea38",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "5c55dc80c5d2139e3381",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "5c55dc80c5d2139e3381",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "4fb80de2833849d47a75",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "4fb80de2833849d47a75",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "66a5b45f4f5d2160a63d",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "66a5b45f4f5d2160a63d",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "2cdbd8a869511e5b57e2",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "2cdbd8a869511e5b57e2",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_cub",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "f894d91682b0c42baef4",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_cub",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "12d33d08ce3e27afd497",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_cub",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "e88decb55a33c114c808",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "99ab49618445fde97e0c",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "99ab49618445fde97e0c",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "7a6fce33aa30add38290",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "7a6fce33aa30add38290",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_dynamic_adaptive",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "b819c83dfdaec5bf3b83",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_dynamic_adaptive",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "b819c83dfdaec5bf3b83",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled_async",
+      "estimate_kind": "upper_bound",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "84c2459fb4fc9253a0a3",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled_async",
+      "estimate_kind": "upper_bound",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "84c2459fb4fc9253a0a3",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_cub",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "ecc1f0cd9fef9bb1201d",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "d02ec6f266b2e2f0a617",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "d02ec6f266b2e2f0a617",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_dynamic_adaptive",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "d07785f8560800bc788d",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_dynamic_adaptive",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "d07785f8560800bc788d",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_dynamic_adaptive",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "a2bee64563a4dbee2741",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_dynamic_adaptive",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 4194304,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "a2bee64563a4dbee2741",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "331976d29216aa6fb6f1",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "331976d29216aa6fb6f1",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "de936f37447a510f2576",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "de936f37447a510f2576",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "7e4e3e551378af758e23",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "hybrid_static_profiled",
+      "estimate_kind": "reference",
+      "estimated_input_bytes": 5592408,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "7e4e3e551378af758e23",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "23c48b74e973f8eb47bf",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "23c48b74e973f8eb47bf",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 0,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "3d6ee39ed9877e3903ec",
+      "within_safe_budget": true
+    },
+    {
+      "algorithm_id": "gpu_multi_cub_equal",
+      "estimate_kind": "exact",
+      "estimated_input_bytes": 8388608,
+      "gpu_free_bytes": 50752258048,
+      "gpu_id": 1,
+      "gpu_name": "Quadro RTX 8000",
+      "gpu_total_bytes": 51539607552,
+      "safe_budget_bytes": 40601806438,
+      "task_key": "3d6ee39ed9877e3903ec",
+      "within_safe_budget": true
+    }
+  ],
+  "multi_gpu_sets": [
+    [
+      0,
+      1
+    ]
+  ],
+  "note": "For thesis energy measurements reserve the whole node/selected GPUs exclusively. RAPL is package-wide; multi-GPU host memory is currently one shared allocation.",
+  "nvml_available": true,
+  "rapl_available": true,
+  "rapl_diagnostics": [
+    {
+      "energy_exists": true,
+      "energy_gid": 0,
+      "energy_mode": "0o444",
+      "energy_path": "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj",
+      "energy_readable": true,
+      "energy_sample": "112334064108",
+      "energy_uid": 0,
+      "max_energy_range_path": "/sys/class/powercap/intel-rapl/intel-rapl:0/max_energy_range_uj",
+      "max_range_gid": 0,
+      "max_range_mode": "0o444",
+      "max_range_readable": true,
+      "max_range_sample": "262143328850",
+      "max_range_uid": 0,
+      "zone": "/sys/class/powercap/intel-rapl/intel-rapl:0"
+    }
+  ],
+  "rapl_package_zones": [
+    "intel-rapl:0:package-0"
+  ],
+  "status": "ok",
+  "task_instances": 45,
+  "warnings": []
+}

@@ -1,0 +1,189 @@
+algorithms:
+  - id: cpu_seq
+    label: CPU sequential
+    scheduler: cpu_only
+    cpu_backend: sequential
+    requires_cuda: false
+    uses_cpu: true
+    uses_gpu: false
+    supports_multi_gpu: false
+    role: reference_baseline
+
+  - id: cpu_omp
+    label: CPU OpenMP reduction
+    scheduler: cpu_only
+    cpu_backend: openmp
+    requires_cuda: false
+    uses_cpu: true
+    uses_gpu: false
+    supports_multi_gpu: false
+    role: cpu_baseline
+
+  - id: cpu_omp_simd
+    label: CPU OpenMP + SIMD reduction
+    scheduler: cpu_only
+    cpu_backend: openmp_simd
+    requires_cuda: false
+    uses_cpu: true
+    uses_gpu: false
+    supports_multi_gpu: false
+    role: strong_cpu_baseline
+
+  - id: gpu_global_atomic
+    label: GPU global atomic per thread
+    scheduler: gpu_only
+    gpu_backend: global_atomic
+    transfer_policy: sync
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    tunables: [block_size]
+    role: intentionally_naive_gpu_baseline
+
+  - id: gpu_shared_naive
+    label: GPU naive shared-memory tree
+    scheduler: gpu_only
+    gpu_backend: shared_naive
+    transfer_policy: sync
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    tunables: [block_size]
+    role: shared_memory_baseline
+
+  - id: gpu_warp_atomic
+    label: GPU register/warp/block reduction + block atomic
+    scheduler: gpu_only
+    gpu_backend: warp_atomic
+    transfer_policy: sync
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    tunables: [block_size]
+    role: optimized_custom_gpu
+
+  - id: gpu_two_pass
+    label: GPU hierarchical two-pass reduction
+    scheduler: gpu_only
+    gpu_backend: two_pass
+    transfer_policy: sync
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    tunables: [block_size]
+    role: optimized_custom_gpu
+
+  - id: gpu_cub
+    label: CUB DeviceReduce
+    scheduler: gpu_only
+    gpu_backend: cub
+    transfer_policy: sync
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    role: library_gpu_baseline
+
+  - id: gpu_multi_cub_equal
+    label: Multi-GPU CUB equal partition
+    scheduler: gpu_static_equal
+    gpu_backend: cub
+    transfer_policy: sync
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: true
+    min_gpus: 2
+    role: multi_gpu_baseline
+
+  - id: gpu_multi_cub_profiled
+    label: Multi-GPU CUB model-based partition
+    scheduler: gpu_static_profiled
+    gpu_backend: cub
+    transfer_policy: sync
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: true
+    min_gpus: 2
+    role: multi_gpu_calibrated_baseline
+
+  - id: hybrid_static_equal
+    label: Hybrid static equal partition
+    scheduler: static_equal
+    cpu_backend: openmp_simd
+    gpu_backend: cub
+    transfer_policy: sync
+    requires_cuda: true
+    uses_cpu: true
+    uses_gpu: true
+    supports_multi_gpu: true
+    role: macro_baseline
+
+  - id: hybrid_static_profiled
+    label: Hybrid static model-based partition
+    scheduler: static_profiled
+    cpu_backend: openmp_simd
+    gpu_backend: cub
+    transfer_policy: sync
+    requires_cuda: true
+    uses_cpu: true
+    uses_gpu: true
+    supports_multi_gpu: true
+    role: calibrated_static
+
+  - id: hybrid_static_profiled_async
+    label: Hybrid static model-based + pinned asynchronous pipeline
+    scheduler: static_profiled
+    cpu_backend: openmp_simd
+    gpu_backend: cub
+    transfer_policy: async_pipeline
+    requires_cuda: true
+    uses_cpu: true
+    uses_gpu: true
+    supports_multi_gpu: true
+    tunables: [pipeline_streams, pipeline_chunks]
+    role: transfer_overlap_variant
+
+  - id: hybrid_dynamic_fixed
+    label: Hybrid centralized fixed-chunk queue
+    scheduler: dynamic_fixed
+    cpu_backend: openmp_simd
+    gpu_backend: cub
+    transfer_policy: sync
+    requires_cuda: true
+    uses_cpu: true
+    uses_gpu: true
+    supports_multi_gpu: true
+    tunables: [chunk_size]
+    role: dynamic_baseline
+
+  - id: hybrid_dynamic_guided
+    label: Hybrid guided self-scheduling
+    scheduler: dynamic_guided
+    cpu_backend: openmp_simd
+    gpu_backend: cub
+    transfer_policy: sync
+    requires_cuda: true
+    uses_cpu: true
+    uses_gpu: true
+    supports_multi_gpu: true
+    tunables: [min_chunk_size, guided_factor]
+    role: dynamic_guided
+
+  - id: hybrid_dynamic_adaptive
+    label: Hybrid throughput-aware adaptive scheduling
+    scheduler: dynamic_adaptive
+    cpu_backend: openmp_simd
+    gpu_backend: cub
+    transfer_policy: sync
+    requires_cuda: true
+    uses_cpu: true
+    uses_gpu: true
+    supports_multi_gpu: true
+    tunables: [min_chunk_size, max_chunk_size, target_chunk_ms, ema_alpha]
+    role: adaptive_scheduler

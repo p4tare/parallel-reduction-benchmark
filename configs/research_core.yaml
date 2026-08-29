@@ -1,0 +1,101 @@
+# EXPLORATORY / LEGACY SWEEP. Do not use this file as the final thesis campaign: it mixes
+# parameter tuning with confirmatory measurements. Use configs/pilot_tuning.yaml first, freeze
+# parameters, and create separate final CPU/GPU/hybrid campaign configs.
+output_dir: results
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: "auto"
+measurement:
+  warmup_runs: 5
+  timing_repetitions: 30
+  energy_batch_repetitions: auto
+  energy_target_batch_seconds: 3.0
+  energy_min_repetitions: 10
+  energy_max_repetitions: 1000000
+  blocks: 5
+  randomization_seed: 20260813
+  max_dataset_ram_fraction: 0.65
+  thermal_safety_gpu_c: 90
+  thermal_safety_cpu_c: 95
+  worker_event_timeout_s: 1800
+  thermal_wait_timeout_s: 300
+energy:
+  enable_cpu: true
+  enable_gpu: true
+  gpu_power_fallback_poll_ms: 100
+experiments:
+  - id: core_reduction_study
+    datasets:
+      - {size: 10000, dtype: int32, distribution: integers, seed: 20260813, low: -5, high: 5}
+      - {size: 1000000, dtype: int32, distribution: integers, seed: 20260813, low: -5, high: 5}
+      - {size: 100000000, dtype: int32, distribution: integers, seed: 20260813, low: -5, high: 5}
+      - size: 10000
+        dtype: float32
+        distribution: symmetric_uniform
+        seed: 20260813
+        low: -1.0
+        high: 1.0
+        quantization: {mode: binary_fraction, bits: 8}
+      - size: 1000000
+        dtype: float32
+        distribution: symmetric_uniform
+        seed: 20260813
+        low: -1.0
+        high: 1.0
+        quantization: {mode: binary_fraction, bits: 8}
+      - size: 100000000
+        dtype: float32
+        distribution: symmetric_uniform
+        seed: 20260813
+        low: -1.0
+        high: 1.0
+        quantization: {mode: binary_fraction, bits: 8}
+      - size: 1000000
+        dtype: float64
+        distribution: symmetric_uniform
+        seed: 20260813
+        low: -1.0
+        high: 1.0
+        quantization: {mode: binary_fraction, bits: 16}
+      - size: 100000000
+        dtype: float64
+        distribution: symmetric_uniform
+        seed: 20260813
+        low: -1.0
+        high: 1.0
+        quantization: {mode: binary_fraction, bits: 16}
+    algorithms:
+      - {id: cpu_seq}
+      - {id: cpu_omp}
+      - {id: cpu_omp_simd}
+      - id: gpu_global_atomic
+        params: {block_size: [128, 256, 512]}
+      - id: gpu_shared_naive
+        params: {block_size: [128, 256, 512]}
+      - id: gpu_warp_atomic
+        params: {block_size: [128, 256, 512]}
+      - id: gpu_two_pass
+        params: {block_size: [128, 256, 512]}
+      - {id: gpu_cub}
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_profiled}
+      - id: hybrid_static_profiled_async
+        params: {pipeline_streams: [2, 4], pipeline_chunks: [8, 16]}
+      - id: hybrid_dynamic_fixed
+        params: {chunk_size: [262144, 1048576, 4194304]}
+      - id: hybrid_dynamic_guided
+        params: {min_chunk_size: [65536, 262144], guided_factor: [2.0, 4.0]}
+      - id: hybrid_dynamic_adaptive
+        params:
+          min_chunk_size: [65536]
+          max_chunk_size: [16777216]
+          target_chunk_ms: [2.0, 5.0, 10.0]
+          ema_alpha: [0.25]
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each, all]
+      gpu_control_mode: dedicated
+      memory_policy: interleave

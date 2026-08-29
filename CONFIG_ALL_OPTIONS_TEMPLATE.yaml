@@ -1,0 +1,297 @@
+# Parallel Reduction Benchmark v2.6 — pełny, komentowany szablon konfiguracji
+# ---------------------------------------------------------------------------
+# Ten plik jest przeznaczony do KOPIOWANIA i EDYCJI przed eksperymentem.
+# Aktywna część YAML tworzy mały, poprawny eksperyment. Komentarze pokazują
+# wszystkie warianty kategorialne oraz praktyczne zakresy parametrów liczbowych.
+#
+# Zasada badawcza: w finalnym porównaniu zmieniaj jeden kontrolowany czynnik naraz.
+# Nie uruchamiaj "wszystkiego ze wszystkim" bez wcześniejszego pilota, bo taki
+# iloczyn utrudnia interpretację i może prowadzić do confoundingu.
+
+# Katalog bazowy każdego runu. Powstanie results/run_<UTC timestamp>/.
+output_dir: results
+
+# Cache deterministycznie generowanych datasetów. Metadane + SHA-256 są zapisywane
+# również do datasets.json wewnątrz każdego runu.
+dataset_cache_dir: .prbench/datasets
+
+build:
+  # Katalog roboczy CMake. CMake jest konfigurowany na świeżo dla toolchainu.
+  build_dir: build
+
+  # Dozwolone: Release | RelWithDebInfo
+  # Finalne pomiary: Release.
+  build_type: Release
+
+  # true -> optymalizacja pod bieżący CPU (np. -march=native).
+  # Dobre dla benchmarku konkretnej maszyny, ale wynik jest wtedy zależny od hosta.
+  native_cpu_tuning: true
+
+  # auto -> CUDA jeśli nvcc + NVIDIA GPU są dostępne
+  # on   -> CUDA jest wymagana, brak CUDA = błąd
+  # off  -> build CPU-only
+  enable_cuda: auto
+
+  # null/zakomentowane -> automatycznie; albo dodatnia liczba równoległych jobów.
+  # jobs: 24
+
+  # Opcjonalne jawne ścieżki dla reprodukowalnego toolchainu.
+  # Przy CUDA C++ i NVCC host powinny używać zgodnej rodziny kompilatora.
+  # cxx_compiler: /usr/bin/g++-13
+  # cuda_host_compiler: /usr/bin/g++-13
+
+measurement:
+  # Warm-up odbywa się przed próbkami TIMING i nie jest raportowany jako wynik.
+  warmup_runs: 5
+
+  # Liczba powtórzeń każdego punktu kalibracyjnego schedulerów profiled/adaptive.
+  # Wartość medianowa trafia do modelu; kalibracja jest poza TIMING. Zakres 1..100.
+  scheduler_calibration_repetitions: 5
+
+  # REKOMENDOWANE: auto. Program po warm-up uruchamia krótki PROBE, a następnie
+  # dobiera liczbę iteracji tak, by batch TIMING trwał ~timing_target_batch_seconds.
+  # Alternatywa: stała liczba całkowita >=3, np. timing_repetitions: 30.
+  timing_repetitions: auto
+  timing_probe_repetitions: 10       # 3..1000
+  timing_target_batch_seconds: 0.5   # >0.01 .. 30 s
+  timing_min_repetitions: 30         # >=3
+  timing_max_repetitions: 100000     # >=min, <=1e6
+
+  # ENERGY ma osobny batch, aby nie przypisywać jednej energii każdej próbce czasu.
+  # auto dobiera liczbę redukcji do energy_target_batch_seconds.
+  # Alternatywa: stała dodatnia liczba w [min,max].
+  energy_batch_repetitions: auto
+  energy_target_batch_seconds: 3.0   # >0.1 .. 120 s
+  energy_min_repetitions: 10
+  energy_max_repetitions: 1000000
+
+  # Niezależne, randomizowane bloki. Dla finalnego badania zwykle 5 lub więcej.
+  blocks: 5                          # 1..100
+  randomization_seed: 20260821
+
+  # Ochrona przed datasetem zajmującym niemal cały RAM.
+  max_dataset_ram_fraction: 0.65     # >0.05 .. 0.95
+
+  # Bezpieczeństwo termiczne; to nie jest metoda "schładzania do stałej temperatury".
+  thermal_safety_gpu_c: 90.0         # 40..110 C
+  thermal_safety_cpu_c: 95.0         # 40..115 C
+  thermal_wait_timeout_s: 300.0      # >=0 s
+
+  # Górny timeout pojedynczego zdarzenia workera. ENERGY ma dodatkowo timeout
+  # wyliczony z oczekiwanego czasu batcha.
+  worker_event_timeout_s: 1800.0     # >0 .. 86400 s
+
+energy:
+  # false/false -> czysty timing-only; żaden ENERGY batch nie jest wykonywany.
+  # true/false  -> RAPL package-level CPU (także dla GPU-only, jeśli chcesz energię
+  #                całego pakietu hosta podczas obsługi GPU).
+  # false/true  -> tylko energia GPU z NVML dla tasków korzystających z GPU.
+  # true/true   -> rekomendowane do finalnego CPU/GPU/hybrid energy-to-solution.
+  enable_cpu: false
+  enable_gpu: false
+
+  # Używane tylko, jeśli sprzętowy NVML total-energy counter jest niedostępny i
+  # program musi całkować próbki mocy. Zakres: 20..5000 ms.
+  gpu_power_fallback_poll_ms: 100
+
+telemetry:
+  # Telemetria jest pobierana POZA właściwymi oknami TIMING/ENERGY, aby nie
+  # zanieczyszczać pomiaru. Trafia do telemetry.jsonl.
+  enabled: true
+
+  # CPU: per-CPU MHz + źródło (cpuinfo_avg_freq / cpuinfo_cur_freq /
+  # scaling_cur_freq). Program jawnie zapisuje provenance; scaling_cur_freq nie
+  # jest traktowane jako gwarantowany APERF/MPERF effective frequency.
+  capture_cpu_frequency: true
+
+  # CPU: sensors udostępnione przez kernel/psutil, max + surowe odczyty.
+  capture_cpu_temperature: true
+
+  # GPU: temperatura, P-state, SM/graphics/memory clocks, power, utilization,
+  # PCIe current generation/width.
+  capture_gpu_state: true
+
+  # Snapshot bezpośrednio przed i po TIMING.
+  capture_pre_post_timing: true
+
+  # Snapshot bezpośrednio przed i po ENERGY.
+  capture_pre_post_energy: true
+
+system_baselines:
+  # Best-effort zapis informacji o modułach RAM (DMI/lshw/EDAC). Brak uprawnień
+  # do dmidecode NIE blokuje runu.
+  capture_memory_inventory: true
+
+  # Opcjonalny zewnętrzny STREAM. Jeśli podasz ścieżkę/nazwę programu, jego
+  # Copy/Scale/Add/Triad MB/s zostaną zapisane strukturalnie w manifest.json.
+  # Dla finalnych testów CPU memory-bound warto uruchomić STREAM na tej samej maszynie.
+  stream_executable: null
+  # Przykład:
+  # stream_executable: /opt/stream/stream
+  # stream_args: []
+  stream_args: []
+  stream_timeout_s: 120.0
+
+experiments:
+  # -------------------------------------------------------------------------
+  # AKTYWNY, mały przykład. Możesz tworzyć wiele grup - każda grupa powinna
+  # reprezentować czytelny czynnik badawczy (np. all cores, P-only, E-only).
+  # -------------------------------------------------------------------------
+  - id: editable_example
+
+    # Operacje: dowolny niepusty podzbiór [sum, min, max].
+    operations: [sum, min, max]
+
+    datasets:
+      - size: 1000000                 # dowolna dodatnia liczba elementów
+        dtype: float32                 # int32 | int64 | float32 | float64
+        distribution: uniform          # ones | zeros | uniform | integers | symmetric_uniform
+        seed: 20260821
+        low: -1.0
+        high: 1.0
+        quantization:
+          # none | decimal | binary_fraction
+          mode: binary_fraction
+          # decimal: wymagane digits 0..12
+          # digits: 3
+          # binary_fraction: wymagane bits 0..24
+          bits: 8
+
+      # Przykłady kolejnych kontrolowanych datasetów:
+      # - {size: 10000,     dtype: int32,   distribution: integers, seed: 20260821, low: -5, high: 5, quantization: {mode: none}}
+      # - {size: 100000,    dtype: int64,   distribution: integers, seed: 20260821, low: -5, high: 5, quantization: {mode: none}}
+      # - {size: 10000000,  dtype: float32, distribution: uniform,  seed: 20260821, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      # - {size: 100000000, dtype: float64, distribution: uniform,  seed: 20260821, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 16}}
+
+    algorithms:
+      # CPU baselines
+      - {id: cpu_seq}
+      - {id: cpu_omp}
+      - {id: cpu_omp_simd}
+
+      # GPU single-device; block_size: DOKŁADNIE 32 | 64 | 128 | 256 | 512 | 1024
+      - {id: gpu_global_atomic, params: {block_size: 256}}
+      - {id: gpu_shared_naive,  params: {block_size: 256}}
+      - {id: gpu_warp_atomic,    params: {block_size: 256}}
+      - {id: gpu_two_pass,       params: {block_size: 256}}
+      - {id: gpu_cub}
+
+      # Multi-GPU; planowane tylko przy >=2 GPU
+      # - {id: gpu_multi_cub_equal}
+      # - {id: gpu_multi_cub_profiled}
+
+      # Hybrid static
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_profiled}
+      - id: hybrid_static_profiled_async
+        params:
+          # dodatnie int; pipeline_chunks >= pipeline_streams
+          pipeline_streams: 2
+          pipeline_chunks: 16
+
+      # Hybrid dynamic — fixed queue
+      - id: hybrid_dynamic_fixed
+        params:
+          chunk_size: 4194304          # dowolny dodatni int
+
+      # Hybrid dynamic — guided self-scheduling
+      - id: hybrid_dynamic_guided
+        params:
+          min_chunk_size: 262144       # dodatni int
+          guided_factor: 4.0           # >0
+
+      # Hybrid dynamic — throughput-aware adaptive
+      - id: hybrid_dynamic_adaptive
+        params:
+          min_chunk_size: 65536        # dodatni int
+          max_chunk_size: 16777216     # dodatni int >= min
+          target_chunk_ms: 2.0         # >0
+          ema_alpha: 0.5               # 0 < alpha <= 1
+
+    hardware:
+      # all | performance | efficiency
+      # Na platformach bez wiarygodnej klasyfikacji P/E program nie zgaduje.
+      cpu_core_class: all
+
+      # all_threads | one_thread_per_core
+      cpu_thread_policy: all_threads
+
+      # null/zakomentowane -> bez ograniczenia NUMA; albo np. 0, 1, ...
+      # cpu_numa_node: 0
+
+      # Jawny override OS CPU IDs; jeśli podany, ma pierwszeństwo przed klasą/SMT.
+      # cpu_explicit_ids: [0, 2, 4, 6]
+
+      # Warianty gpu_sets:
+      # [each]       -> każdy widoczny GPU jako osobny warunek
+      # [all]        -> wszystkie GPU razem dla multi-GPU/hybrid; dla single GPU
+      #                 rozwija się do pojedynczych urządzeń
+      # [0]          -> tylko GPU0
+      # [[0, 1]]     -> dokładnie zestaw GPU0+GPU1
+      # [each, all]  -> pojedyncze GPU + zestaw wszystkich (przy obsłudze multi-GPU)
+      gpu_sets: [each]
+
+      # dedicated -> jeden UNIKALNY fizyczny control-core per GPU jest usunięty
+      #              z puli obliczeniowej CPU
+      # shared    -> control-core pozostaje w puli CPU i celowo współdzieli zasób
+      gpu_control_mode: dedicated       # dedicated | shared
+
+      # default | interleave
+      # interleave jest przydatne na multi-NUMA, ale trzeba interpretować wraz z
+      # rzeczywistą topologią i przyszłym placementem danych.
+      memory_policy: interleave
+
+# -----------------------------------------------------------------------------
+# JAK TWORZYĆ SWEEPY PARAMETRÓW
+# Każda LISTA w params jest rozwijana jako iloczyn kartezjański. Przykłady:
+#
+# algorithms:
+#   - id: gpu_warp_atomic
+#     params:
+#       block_size: [32, 64, 128, 256, 512, 1024]
+#
+#   - id: hybrid_static_profiled_async
+#     params:
+#       pipeline_streams: [1, 2, 4, 8]
+#       pipeline_chunks: [8, 16, 32, 64]
+#
+#   - id: hybrid_dynamic_fixed
+#     params:
+#       chunk_size: [16384, 65536, 262144, 1048576, 4194304, 16777216, 33554432]
+#
+#   - id: hybrid_dynamic_guided
+#     params:
+#       min_chunk_size: [16384, 65536, 262144, 1048576]
+#       guided_factor: [1.25, 1.5, 2.0, 4.0, 8.0]
+#
+#   - id: hybrid_dynamic_adaptive
+#     params:
+#       min_chunk_size: [16384, 65536, 262144]
+#       max_chunk_size: [1048576, 4194304, 16777216, 33554432]
+#       target_chunk_ms: [0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
+#       ema_alpha: [0.1, 0.25, 0.5, 0.75, 1.0]
+#
+# UWAGA: listy parametrów są do PILOTA/SENSITIVITY ANALYSIS. W finalnej kampanii
+# należy używać zamrożonych pojedynczych wartości wybranych wcześniej.
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# PRZYKŁADOWE GRUPY DO UCZCIWEGO BADANIA P/E/ALL I DEDICATED/SHARED
+# Skopiuj grupę i zmieniaj TYLKO wskazany czynnik. Operacje, datasety i algorytmy
+# muszą pozostać identyczne, jeśli chcesz interpretować różnicę jako efekt P/E.
+#
+# - id: p_only
+#   operations: [sum, min, max]
+#   datasets: *same_datasets   # YAML anchors można stosować, jeśli chcesz
+#   algorithms: *same_algorithms
+#   hardware: {cpu_core_class: performance, cpu_thread_policy: all_threads,
+#              gpu_sets: [each], gpu_control_mode: dedicated, memory_policy: interleave}
+#
+# - id: e_only
+#   ... identycznie ..., cpu_core_class: efficiency
+#
+# - id: all_cores
+#   ... identycznie ..., cpu_core_class: all
+#
+# Analogicznie do dedicated/shared: zmieniaj tylko gpu_control_mode.
+# -----------------------------------------------------------------------------

@@ -1,0 +1,51 @@
+from prbench.capacity import dataset_size_bytes, gpu_capacity_rows
+from prbench.catalog import AlgorithmCatalog
+from prbench.models import DType, DatasetSpec, ExperimentGroup, HardwareConfig, RootConfig, SystemTopologyModel, TopologyCpu, TopologyGpu
+from prbench.sweep import SweepPlanner
+
+
+def topology() -> SystemTopologyModel:
+    return SystemTopologyModel(
+        hostname="x", os="Linux", kernel="x", machine="x86_64",
+        logical_cpus=[
+            TopologyCpu(cpu_id=0, socket_id=0, core_id=0, numa_node=0),
+            TopologyCpu(cpu_id=1, socket_id=0, core_id=1, numa_node=0),
+        ],
+        allowed_cpus=[0, 1], numa_nodes={0: [0, 1]},
+        gpus=[
+            TopologyGpu(index=0, name="g0", uuid="0", pci_bus_id="0000:01:00.0", memory_bytes=16<<30, memory_free_bytes=15<<30),
+            TopologyGpu(index=1, name="g1", uuid="1", pci_bus_id="0000:02:00.0", memory_bytes=16<<30, memory_free_bytes=15<<30),
+        ],
+        total_ram_bytes=64 << 30, nvml_available=True,
+    )
+
+
+def test_dataset_size_bytes() -> None:
+    assert dataset_size_bytes(DatasetSpec(size=100, dtype=DType.float32)) == 400
+    assert dataset_size_bytes(DatasetSpec(size=100, dtype=DType.int64)) == 800
+
+
+def test_equal_multi_gpu_capacity_is_partitioned() -> None:
+    cfg = RootConfig(
+        measurement={"blocks": 1, "timing_repetitions": 3},
+        energy={"enable_cpu": False, "enable_gpu": False},
+        experiments=[ExperimentGroup(
+            id="m", datasets=[DatasetSpec(size=1_000_000, dtype=DType.int64)],
+            algorithms=[{"id": "gpu_multi_cub_equal"}],
+            hardware=HardwareConfig(gpu_sets=["all"]),
+        )],
+    )
+    task = SweepPlanner(AlgorithmCatalog(), topology()).plan(cfg)[0]
+    rows = gpu_capacity_rows(task, topology(), 0.8)
+    assert len(rows) == 2
+    assert {r["estimate_kind"] for r in rows} == {"exact"}
+    assert {r["estimated_input_bytes"] for r in rows} == {4_000_000}
+
+
+def test_cuda_visible_devices_identity_check(monkeypatch) -> None:
+    from prbench.cli import _cuda_visible_devices_problem
+    t = topology()
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
+    assert _cuda_visible_devices_problem(t) is None
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "1,0")
+    assert "masks/reorders" in (_cuda_visible_devices_problem(t) or "")

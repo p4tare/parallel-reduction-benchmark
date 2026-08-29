@@ -1,0 +1,1288 @@
+{
+  "cuda_visible_devices": null,
+  "environment": {
+    "CXX": null,
+    "PRBENCH_CUDA_HOST_COMPILER": null,
+    "PRBENCH_CXX_COMPILER": null
+  },
+  "gpu_energy_diagnostics": [
+    {
+      "gpu_id": 0,
+      "name": "Quadro RTX 8000",
+      "power_usage_sample_w": 228.661,
+      "power_usage_supported": true,
+      "total_energy_counter_sample_mj": 972172888,
+      "total_energy_counter_supported": true
+    },
+    {
+      "gpu_id": 1,
+      "name": "Quadro RTX 8000",
+      "power_usage_sample_w": 181.649,
+      "power_usage_supported": true,
+      "total_energy_counter_sample_mj": 1028185148,
+      "total_energy_counter_supported": true
+    }
+  ],
+  "project_root": "/home/macierz/s188615/reduction_benchmark",
+  "rapl_available": true,
+  "rapl_diagnostics": [
+    {
+      "energy_exists": true,
+      "energy_gid": 0,
+      "energy_mode": "0o444",
+      "energy_path": "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj",
+      "energy_readable": true,
+      "energy_sample": "127748764087",
+      "energy_uid": 0,
+      "max_energy_range_path": "/sys/class/powercap/intel-rapl/intel-rapl:0/max_energy_range_uj",
+      "max_range_gid": 0,
+      "max_range_mode": "0o444",
+      "max_range_readable": true,
+      "max_range_sample": "262143328850",
+      "max_range_uid": 0,
+      "zone": "/sys/class/powercap/intel-rapl/intel-rapl:0"
+    }
+  ],
+  "rapl_present": true,
+  "telemetry_snapshot": {
+    "cpu_frequency": {
+      "max_mhz": 3700.012,
+      "mean_mhz": 1520.7709583333333,
+      "min_mhz": 1199.424,
+      "note": "cpuinfo_avg_freq is preferred when exposed by the kernel. Otherwise cpuinfo_cur_freq or scaling_cur_freq is recorded, with psutil as a final fallback. The source is always stored because these values are not equivalent to APERF/MPERF effective frequency on every platform.",
+      "per_cpu": {
+        "0": {
+          "frequency_khz": 1200013,
+          "frequency_mhz": 1200.013,
+          "source": "cpuinfo_avg_freq"
+        },
+        "1": {
+          "frequency_khz": 3700001,
+          "frequency_mhz": 3700.001,
+          "source": "cpuinfo_avg_freq"
+        },
+        "10": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "11": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "12": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "13": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "14": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "15": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "16": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "17": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "18": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "19": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "2": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "20": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "21": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "22": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "23": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "24": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "25": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "26": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "27": {
+          "frequency_khz": 2099989,
+          "frequency_mhz": 2099.989,
+          "source": "cpuinfo_avg_freq"
+        },
+        "28": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "29": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "3": {
+          "frequency_khz": 2097562,
+          "frequency_mhz": 2097.562,
+          "source": "cpuinfo_avg_freq"
+        },
+        "30": {
+          "frequency_khz": 2998199,
+          "frequency_mhz": 2998.199,
+          "source": "cpuinfo_avg_freq"
+        },
+        "31": {
+          "frequency_khz": 2703089,
+          "frequency_mhz": 2703.089,
+          "source": "cpuinfo_avg_freq"
+        },
+        "32": {
+          "frequency_khz": 3699993,
+          "frequency_mhz": 3699.993,
+          "source": "cpuinfo_avg_freq"
+        },
+        "33": {
+          "frequency_khz": 2594081,
+          "frequency_mhz": 2594.081,
+          "source": "cpuinfo_avg_freq"
+        },
+        "34": {
+          "frequency_khz": 2601159,
+          "frequency_mhz": 2601.159,
+          "source": "cpuinfo_avg_freq"
+        },
+        "35": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "36": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "37": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "38": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "39": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "4": {
+          "frequency_khz": 1199424,
+          "frequency_mhz": 1199.424,
+          "source": "cpuinfo_avg_freq"
+        },
+        "40": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "41": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "42": {
+          "frequency_khz": 1203446,
+          "frequency_mhz": 1203.446,
+          "source": "cpuinfo_avg_freq"
+        },
+        "43": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "44": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "45": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "46": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "47": {
+          "frequency_khz": 3700012,
+          "frequency_mhz": 3700.012,
+          "source": "cpuinfo_avg_freq"
+        },
+        "5": {
+          "frequency_khz": 1200038,
+          "frequency_mhz": 1200.038,
+          "source": "cpuinfo_avg_freq"
+        },
+        "6": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "7": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "8": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        },
+        "9": {
+          "frequency_khz": 1200000,
+          "frequency_mhz": 1200.0,
+          "source": "cpuinfo_avg_freq"
+        }
+      },
+      "sources": [
+        "cpuinfo_avg_freq"
+      ]
+    },
+    "cpu_temperature": {
+      "available": true,
+      "max_c": 51.906,
+      "sensors": [
+        {
+          "critical_c": 81.85,
+          "current_c": 25.85,
+          "group": "nvme",
+          "high_c": 77.85,
+          "label": "Composite"
+        },
+        {
+          "critical_c": 65261.85,
+          "current_c": 25.85,
+          "group": "nvme",
+          "high_c": 65261.85,
+          "label": "Sensor 1"
+        },
+        {
+          "critical_c": null,
+          "current_c": 51.906,
+          "group": "eno2",
+          "high_c": null,
+          "label": "PHY Temperature"
+        },
+        {
+          "critical_c": null,
+          "current_c": 49.85,
+          "group": "eno2",
+          "high_c": null,
+          "label": "MAC Temperature"
+        },
+        {
+          "critical_c": null,
+          "current_c": 31.0,
+          "group": "pch_lewisburg",
+          "high_c": null,
+          "label": null
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 47.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Package id 0"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 34.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 8"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 44.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 9"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 33.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 10"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 34.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 11"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 34.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 12"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 35.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 13"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 33.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 16"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 36.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 17"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 37.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 0"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 35.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 18"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 35.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 19"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 36.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 20"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 34.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 21"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 32.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 25"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 33.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 26"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 34.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 27"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 47.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 1"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 35.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 28"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 46.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 29"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 35.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 2"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 33.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 3"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 33.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 4"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 34.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 5"
+        },
+        {
+          "critical_c": 95.0,
+          "current_c": 35.0,
+          "group": "coretemp",
+          "high_c": 85.0,
+          "label": "Core 6"
+        }
+      ]
+    },
+    "enabled": true,
+    "gpu_state": {
+      "available": true,
+      "devices": {
+        "0": {
+          "gpu_utilization_percent": 100,
+          "graphics_clock_mhz": 1470,
+          "memory_clock_mhz": 6500,
+          "memory_utilization_percent": 34,
+          "pcie_current_generation": 3,
+          "pcie_current_width": 16,
+          "power_limit_w": 237.306,
+          "power_w": 226.182,
+          "pstate": "P2",
+          "sm_clock_mhz": 1470,
+          "temperature_c": 86.0
+        },
+        "1": {
+          "gpu_utilization_percent": 95,
+          "graphics_clock_mhz": 1065,
+          "memory_clock_mhz": 6500,
+          "memory_utilization_percent": 36,
+          "pcie_current_generation": 3,
+          "pcie_current_width": 16,
+          "power_limit_w": 172.786,
+          "power_w": 163.755,
+          "pstate": "P2",
+          "sm_clock_mhz": 1065,
+          "temperature_c": 71.0
+        }
+      }
+    },
+    "phase": "doctor",
+    "timestamp": "2026-08-26T21:07:24.309133+00:00"
+  },
+  "toolchain": {
+    "cmake": {
+      "path": "/home/macierz/s188615/reduction_benchmark/venv/bin/cmake",
+      "version": "cmake version 4.4.2\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake)."
+    },
+    "cxx": {
+      "path": "/usr/bin/x86_64-linux-gnu-g++-15",
+      "version": "c++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+    },
+    "gxx": {
+      "path": "/usr/bin/x86_64-linux-gnu-g++-15",
+      "version": "g++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+    },
+    "nvcc": {
+      "path": "/usr/bin/nvcc",
+      "version": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2024 NVIDIA Corporation\nBuilt on Thu_Mar_28_02:18:24_PDT_2024\nCuda compilation tools, release 12.4, V12.4.131\nBuild cuda_12.4.r12.4/compiler.34097967_0"
+    },
+    "versioned_gxx": {
+      "g++-13": {
+        "path": "/usr/bin/x86_64-linux-gnu-g++-13",
+        "version": "g++-13 (Ubuntu 13.4.0-10ubuntu1) 13.4.0\nCopyright (C) 2023 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+      },
+      "g++-15": {
+        "path": "/usr/bin/x86_64-linux-gnu-g++-15",
+        "version": "g++-15 (Ubuntu 15.2.0-16ubuntu1) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+      }
+    }
+  },
+  "topology": {
+    "allowed_cpus": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47
+    ],
+    "gpus": [
+      {
+        "compute_capability": "7.5",
+        "index": 0,
+        "local_cpus": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47
+        ],
+        "memory_bytes": 51539607552,
+        "memory_free_bytes": 3020095488,
+        "memory_used_bytes": 48519512064,
+        "name": "Quadro RTX 8000",
+        "numa_node": 0,
+        "pci_bus_id": "0000:19:00.0",
+        "pcie_current_link_speed": "8.0 GT/s PCIe",
+        "pcie_current_link_width": 16,
+        "pcie_max_link_speed": "8.0 GT/s PCIe",
+        "pcie_max_link_width": 16,
+        "uuid": "GPU-05522ddf-2dae-aa9f-5012-f876f2a7050c"
+      },
+      {
+        "compute_capability": "7.5",
+        "index": 1,
+        "local_cpus": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47
+        ],
+        "memory_bytes": 51539607552,
+        "memory_free_bytes": 3020095488,
+        "memory_used_bytes": 48519512064,
+        "name": "Quadro RTX 8000",
+        "numa_node": 0,
+        "pci_bus_id": "0000:1a:00.0",
+        "pcie_current_link_speed": "8.0 GT/s PCIe",
+        "pcie_current_link_width": 16,
+        "pcie_max_link_speed": "8.0 GT/s PCIe",
+        "pcie_max_link_width": 16,
+        "uuid": "GPU-f48af6f4-a901-6124-f206-2cb8e502e19f"
+      }
+    ],
+    "hostname": "apl13.lab.kask.eti.pg.edu.pl",
+    "kernel": "7.0.0-27-generic",
+    "logical_cpus": [
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 0,
+        "cpu_id": 0,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 1,
+        "cpu_id": 1,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 2,
+        "cpu_id": 2,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 3,
+        "cpu_id": 3,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 4,
+        "cpu_id": 4,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 5,
+        "cpu_id": 5,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 6,
+        "cpu_id": 6,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 8,
+        "cpu_id": 7,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 9,
+        "cpu_id": 8,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 10,
+        "cpu_id": 9,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 11,
+        "cpu_id": 10,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 12,
+        "cpu_id": 11,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 13,
+        "cpu_id": 12,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 16,
+        "cpu_id": 13,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 17,
+        "cpu_id": 14,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 18,
+        "cpu_id": 15,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 19,
+        "cpu_id": 16,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 20,
+        "cpu_id": 17,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 21,
+        "cpu_id": 18,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 25,
+        "cpu_id": 19,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 26,
+        "cpu_id": 20,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 27,
+        "cpu_id": 21,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 28,
+        "cpu_id": 22,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 29,
+        "cpu_id": 23,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 0,
+        "cpu_id": 24,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 1,
+        "cpu_id": 25,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 2,
+        "cpu_id": 26,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 3,
+        "cpu_id": 27,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 4,
+        "cpu_id": 28,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 5,
+        "cpu_id": 29,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 6,
+        "cpu_id": 30,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 8,
+        "cpu_id": 31,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 9,
+        "cpu_id": 32,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 10,
+        "cpu_id": 33,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 11,
+        "cpu_id": 34,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 12,
+        "cpu_id": 35,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 13,
+        "cpu_id": 36,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 16,
+        "cpu_id": 37,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 17,
+        "cpu_id": 38,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 18,
+        "cpu_id": 39,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 19,
+        "cpu_id": 40,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 20,
+        "cpu_id": 41,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 21,
+        "cpu_id": 42,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 25,
+        "cpu_id": 43,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 26,
+        "cpu_id": 44,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 27,
+        "cpu_id": 45,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 28,
+        "cpu_id": 46,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      },
+      {
+        "core_class": "unknown",
+        "core_class_source": "unavailable",
+        "core_id": 29,
+        "cpu_id": 47,
+        "numa_node": 0,
+        "online": true,
+        "socket_id": 0
+      }
+    ],
+    "machine": "x86_64",
+    "numa_nodes": {
+      "0": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47
+      ]
+    },
+    "nvml_available": true,
+    "os": "Linux",
+    "p2p_matrix": {
+      "0": {
+        "0": {
+          "atomics": true,
+          "read": true,
+          "status": "self",
+          "write": true
+        },
+        "1": {
+          "atomics": true,
+          "atomics_nvml_status": 0,
+          "read": null,
+          "status": "queried",
+          "write": true,
+          "write_nvml_status": 0
+        }
+      },
+      "1": {
+        "0": {
+          "atomics": true,
+          "atomics_nvml_status": 0,
+          "read": null,
+          "status": "queried",
+          "write": true,
+          "write_nvml_status": 0
+        },
+        "1": {
+          "atomics": true,
+          "read": true,
+          "status": "self",
+          "write": true
+        }
+      }
+    },
+    "total_ram_bytes": 201146896384
+  }
+}

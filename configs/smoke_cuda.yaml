@@ -1,0 +1,58 @@
+output_dir: results
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: "auto"
+measurement:
+  warmup_runs: 2
+  timing_repetitions: 5
+  energy_batch_repetitions: 5
+  energy_target_batch_seconds: 1.0
+  energy_min_repetitions: 5
+  energy_max_repetitions: 1000
+  blocks: 1
+  randomization_seed: 12345
+  max_dataset_ram_fraction: 0.2
+  worker_event_timeout_s: 1800
+  thermal_wait_timeout_s: 60
+energy:
+  enable_cpu: true
+  enable_gpu: true
+  gpu_power_fallback_poll_ms: 100
+experiments:
+  - id: cuda_smoke
+    datasets:
+      - size: 1000000
+        dtype: float32
+        distribution: symmetric_uniform
+        seed: 7
+        low: -1.0
+        high: 1.0
+        quantization:
+          mode: binary_fraction
+          bits: 8
+    algorithms:
+      - id: gpu_global_atomic
+        params: {block_size: [128, 256]}
+      - id: gpu_shared_naive
+        params: {block_size: [128, 256]}
+      - id: gpu_warp_atomic
+        params: {block_size: [128, 256]}
+      - id: gpu_two_pass
+        params: {block_size: [128, 256]}
+      - id: gpu_cub
+      - id: hybrid_static_equal
+      - id: hybrid_static_profiled
+      - id: hybrid_static_profiled_async
+        params: {pipeline_streams: [2], pipeline_chunks: [4]}
+      - id: hybrid_dynamic_fixed
+        params: {chunk_size: [262144, 1048576]}
+      - id: hybrid_dynamic_guided
+      - id: hybrid_dynamic_adaptive
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: interleave

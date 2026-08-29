@@ -1,0 +1,203 @@
+# Parallel Reduction Benchmark v2.7.0
+
+> **Aktualizacja v2.7.0:** utwardzono ścieżkę multi-GPU: selektory par GPU, kontrola VRAM/RAM przed uruchomieniem, diagnostyka NVML/CUDA_VISIBLE_DEVICES, lokalne przypinanie kalibracji i jawne ostrzeżenia NUMA. Zachowano wszystkie rozszerzenia pomiarowe v2.6. Szczegóły: [`PATCH_V2_7.md`](PATCH_V2_7.md).
+
+> **Aktualizacja v2.6:** warstwa pomiarowa została rozszerzona o automatyczne batche TIMING, telemetrię DVFS/temperatur, load-balancing w elementach, metryki kalibracji/modeli schedulerów, jawne energy coverage, per-block summaries, dataset manifest, PCIe/P2P metadata, CUB/CCCL version oraz opcjonalny STREAM baseline. Szczegóły: [`PATCH_V2_6.md`](PATCH_V2_6.md), [`MEASUREMENT_DATA_SCHEMA.md`](MEASUREMENT_DATA_SCHEMA.md) i [`configs/CONFIG_ALL_OPTIONS_TEMPLATE.yaml`](configs/CONFIG_ALL_OPTIONS_TEMPLATE.yaml).
+
+## Overview
+
+Research-grade framework for comparing performance and energy-to-solution of parallel reductions on CPU, NVIDIA GPU, multi-GPU and heterogeneous CPU+GPU systems.
+
+The project uses one native C++/CUDA worker and a Python orchestration layer. Its primary design goal is experimental validity: common measurement boundaries, deterministic datasets, explicit affinity, topology-aware GPU control threads, randomized blocks, separate timing/energy phases, fail-fast validation and preservation of raw samples.
+
+## Architecture
+
+### Python orchestration layer
+
+- strict Pydantic/YAML configuration;
+- deterministic dataset generation with seed, SHA-256, operation-specific references (`sum`, `min`, `max`) and `sum_abs`;
+- Linux CPU/socket/core/NUMA topology and NVML GPU/PCI locality discovery;
+- native CPUID-based Intel P/E classification after build;
+- independent CPU core-class and SMT/thread policies;
+- one-to-one topology-aware GPU→physical-control-core assignment;
+- CMake toolchain probing and reproducible fresh builds;
+- randomized experiment blocks;
+- RAPL package-energy counters with wraparound handling;
+- NVML total-energy counters with timestamped power integration fallback;
+- READY/TIMING/[ENERGY]/DUMP worker protocol (energy phase is omitted in timing-only pilots);
+- append-only JSONL raw data plus derived summary CSV;
+- `plan` and `preflight` checks before expensive campaigns.
+
+### Native C++/CUDA worker
+
+- one stable executable for every algorithm composition and reduction operation;
+- `std::chrono::steady_clock` for host end-to-end timing;
+- CUDA Events for H2D/kernel/D2H timing;
+- OpenMP CPU backends without nested OpenMP;
+- one distinct host control thread/physical core assignment per GPU;
+- static, model-based, guided and throughput-adaptive schedulers;
+- CUB DeviceReduce baseline;
+- single-GPU and multi-GPU backends;
+- CPU-only build when CUDA is unavailable.
+
+
+## Reduction operations
+
+Reduction operation is a first-class experimental dimension. Experiment groups can select one or more operations without duplicating scheduler implementations:
+
+```yaml
+operations: [sum, min, max]
+```
+
+The operation is carried through CPU/GPU backends, hybrid scheduling, validation, task identity and result files. Existing configurations without `operations` remain backward-compatible and default to `sum`. Before confirmatory `min`/`max` measurements, run `configs/smoke_operations_cpu.yaml` and `configs/smoke_operations_cuda.yaml`, then tune operation-sensitive parameters with `configs/pilot_tuning_operations.yaml`.
+
+## Algorithm catalog
+
+The core scientific comparison contains fourteen CPU, GPU and CPU+GPU strategies. On machines with at least two GPUs two additional CUB multi-GPU baselines are enabled:
+
+- `cpu_seq`, `cpu_omp`, `cpu_omp_simd`;
+- `gpu_global_atomic`, `gpu_shared_naive`, `gpu_warp_atomic`, `gpu_two_pass`, `gpu_cub`;
+- `hybrid_static_equal`, `hybrid_static_profiled`, `hybrid_static_profiled_async`;
+- `hybrid_dynamic_fixed`, `hybrid_dynamic_guided`, `hybrid_dynamic_adaptive`;
+- `gpu_multi_cub_equal`, `gpu_multi_cub_profiled` (2+ GPU only).
+
+See `ALGORITHM_SELECTION.md` for the rationale.
+
+## Quick start / validation
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install -e '.[dev]'
+
+prbench doctor
+prbench list-algorithms
+prbench run --config configs/smoke_cpu.yaml
+prbench run --config configs/smoke_cuda.yaml
+prbench run --config configs/smoke_all.yaml
+```
+
+On a hybrid P/E processor also run:
+
+```bash
+prbench plan --config configs/smoke_core_classes.yaml
+prbench run --config configs/smoke_core_classes.yaml
+```
+
+On a server with at least two visible NVIDIA GPUs:
+
+```bash
+prbench plan --config configs/smoke_multi_gpu.yaml
+prbench run --config configs/smoke_multi_gpu.yaml
+```
+
+A run is considered successful only when the final `Task status counts` contains no `failed` or `invalid` entries.
+
+## CPU resource selection
+
+CPU architecture and SMT are separate experimental factors:
+
+```yaml
+hardware:
+  cpu_core_class: all           # all | performance | efficiency
+  cpu_thread_policy: all_threads # all_threads | one_thread_per_core
+```
+
+On Intel hybrid x86 processors P/E detection uses the native CPUID Hybrid Information Leaf after the worker has been compiled. The benchmark deliberately does not infer P/E classes solely from SMT siblings. If automatic classification is unavailable, an explicitly verified list can be supplied with `cpu_explicit_ids`.
+
+GPU host-control behavior is also explicit:
+
+```yaml
+  gpu_control_mode: dedicated   # dedicated | shared
+```
+
+`dedicated` removes the entire physical control core (including SMT siblings) from CPU reduction. `shared` leaves that physical core in the CPU compute pool. Every GPU receives a distinct physical control core; two GPUs are never assigned to two SMT siblings of one core.
+
+
+Energy-enabled `run` commands enforce preflight in v2.5. If package-level RAPL is present but unreadable, CPU/hybrid energy experiments do not start; see `RAPL_ACCESS.md`. GPU-only NVML energy can be validated independently with `configs/energy_validation_gpu_only.yaml`. Progress is line-buffered so `| tee ...` no longer hides long energy batches.
+For the already frozen single-GPU sum campaign, `configs/final_single_gpu_sum_timing_only.yaml` can be used without RAPL, while `configs/final_single_gpu_sum_energy.yaml` is the corresponding performance+energy campaign once RAPL access is available.
+
+## Before a final research campaign
+
+Do not use `configs/research_core.yaml` as final thesis data: it is an exploratory sweep that mixes parameter tuning with comparison. First run:
+
+```bash
+prbench run --config configs/pilot_tuning.yaml
+```
+
+Choose and freeze the tuning parameters, then create separate confirmatory CPU, GPU and hybrid configurations. See `RESEARCH_PROTOCOL.md`.
+
+Before each final run execute:
+
+```bash
+prbench preflight --config <final-config.yaml>
+prbench plan --config <final-config.yaml> > plan.json
+```
+
+Final energy measurements should use exclusive access to the node/CPUs and selected GPUs. RAPL is package-wide, so unrelated CPU load contaminates package-energy results even when benchmark threads are correctly pinned.
+
+## Measurement boundary
+
+The primary `e2e_us` starts with the dataset already resident in host RAM and ends when the final scalar is available in host RAM. It includes scheduling, CPU computation, H2D, GPU reduction, D2H, synchronization and final host merge as applicable. It excludes build/compilation, dataset file loading, CUDA context initialization, device allocation, warm-up, model calibration and result serialization.
+
+Timing and energy are measured in separate phases. Individual timing repetitions are retained. Energy uses a repeated batch long enough to obtain a stable counter interval, then stores batch energy and per-reduction derived energy rather than duplicating one process-level value into every timing row.
+
+`strategy_create_us` and `prepare_us` are preserved separately so setup/calibration cost can be reported in addition to steady-state `e2e_us`.
+
+## Portability and scope
+
+Linux is the reference research OS because RAPL, NUMA sysfs and PCI locality are Linux-specific. CPU-only servers work without CUDA. GPU algorithms target NVIDIA CUDA in this version. Any visible number of NVIDIA GPUs can be used by hybrid schedulers; 2+ GPU servers additionally enable the multi-GPU CUB baselines. Missing RAPL/NVML is reported rather than fabricated.
+
+P/E-specific experiments are only scheduled when those core classes can be classified reliably. Homogeneous CPU servers remain fully supported with `cpu_core_class: all`.
+
+## Development checks
+
+```bash
+PYTHONPATH=. python -m pytest -q
+cmake -S . -B build-cpu -DPRBENCH_ENABLE_CUDA=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build build-cpu --parallel
+ctest --test-dir build-cpu --output-on-failure
+```
+
+CUDA paths must still be smoke-tested on the target NVIDIA machine; the repository does not emulate CUDA timing or energy data.
+
+## v2.3 server-validation notes
+
+The v2.3 patch incorporates a regression found during real CUDA testing of `hybrid_dynamic_fixed` with chunks smaller than the former 1 Mi-element calibration sample. See `PATCH_V2_3.md` and run `configs/regression_dynamic_fixed.yaml` after upgrading.
+
+For configuration details:
+
+- `CONFIGURATION_REFERENCE.md` lists every supported categorical value and exact validation domains;
+- `configs/pilot_tuning.yaml` is the normal compact pilot;
+- `configs/pilot_tuning_full.yaml` is a deliberately large exploratory/sensitivity grid and should not be used as confirmatory thesis data.
+
+## v2.5 server-validation notes
+
+The v2.5 patch makes `sum`, `min` and `max` first-class operations, adds strict energy preflight enforcement and detailed RAPL diagnostics, and makes long energy phases visible even when output is piped through `tee`. See `PATCH_V2_4.md`, `RAPL_ACCESS.md` and `CONFIGURATION_REFERENCE.md`.
+
+
+## Administrator checklist
+
+See `ADMIN_REQUIREMENTS.md` for system packages, NVIDIA/NVML access, RAPL permissions and topology sysfs requirements. A ready-to-send Polish administrator email is in `ADMIN_EMAIL_TEMPLATE_PL.md`.
+
+
+## Multi-GPU research additions in v2.7.0
+
+For systems with two or more GPUs, `gpu_sets` accepts `each`, `pairs` (alias
+`all_pairs`), `all`, explicit integer IDs, and explicit lists such as `[0, 2]`.
+This makes a single topology-neutral configuration cover 2-GPU and 3-GPU hosts:
+
+```yaml
+hardware:
+  gpu_sets: [each, pairs, all]
+```
+
+`preflight` now reports current total/free/used VRAM, a per-task GPU input-memory
+capacity estimate, selected multi-GPU sets, GPU energy-counter support, graphics and
+compute processes, and CUDA_VISIBLE_DEVICES consistency. Exact impossible allocations
+fail before a large dataset is generated. Model-based partitions are warnings rather
+than false fatal errors.
+
+Multi-GPU profiling/calibration is pinned to the topology-local control CPU of the GPU
+being calibrated and restores the previous affinity afterwards. Pure multi-GPU worker
+orchestration is also pinned deterministically.

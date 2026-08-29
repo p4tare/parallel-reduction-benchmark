@@ -1,0 +1,89 @@
+# UWAGA: SZEROKI SWEEP REFERENCYJNY - NIE JEST TO KONFIGURACJA FINALNA.
+# Może wygenerować bardzo dużo zadań. Energia wyłączona celowo.
+# Planner automatycznie pomija nielegalne pary w iloczynie parametrów, np.
+# pipeline_streams=8 z pipeline_chunks=4. Jawna pojedyncza nielegalna konfiguracja
+# nadal kończy się błędem fail-fast. Przed run użyj zawsze: prbench plan --config ...
+output_dir: results
+dataset_cache_dir: .prbench/datasets
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: auto
+  jobs: null
+  cxx_compiler: null
+  cuda_host_compiler: null
+measurement:
+  warmup_runs: 5
+  scheduler_calibration_repetitions: 5
+  timing_repetitions: auto
+  timing_probe_repetitions: 10
+  timing_target_batch_seconds: 0.5
+  timing_min_repetitions: 30
+  timing_max_repetitions: 100000
+  energy_batch_repetitions: auto
+  energy_target_batch_seconds: 3.0
+  energy_min_repetitions: 10
+  energy_max_repetitions: 1000000
+  blocks: 2
+  randomization_seed: 20260821
+  max_dataset_ram_fraction: 0.65
+  thermal_safety_gpu_c: 90
+  thermal_safety_cpu_c: 95
+  thermal_wait_timeout_s: 300
+  worker_event_timeout_s: 1800
+telemetry:
+  enabled: true
+  capture_cpu_frequency: true
+  capture_cpu_temperature: true
+  capture_gpu_state: true
+  capture_pre_post_timing: true
+  capture_pre_post_energy: false
+system_baselines:
+  capture_memory_inventory: true
+  stream_executable: null
+  stream_args: []
+  stream_timeout_s: 120
+energy:
+  enable_cpu: false
+  enable_gpu: false
+  gpu_power_fallback_poll_ms: 100
+experiments:
+  - id: broad_parameter_sweep
+    operations: [sum, min, max]
+    datasets:
+      - {size: 1000000, dtype: float32, distribution: uniform, seed: 20260821, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 100000000, dtype: float32, distribution: uniform, seed: 20260821, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 100000000, dtype: float64, distribution: uniform, seed: 20260821, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 16}}
+      - {size: 100000000, dtype: int32, distribution: integers, seed: 20260821, low: -5, high: 5, quantization: {mode: none}}
+      - {size: 100000000, dtype: int64, distribution: integers, seed: 20260821, low: -5, high: 5, quantization: {mode: none}}
+    algorithms:
+      - {id: cpu_seq}
+      - {id: cpu_omp}
+      - {id: cpu_omp_simd}
+      - {id: gpu_global_atomic, params: {block_size: [32, 64, 128, 256, 512, 1024]}}
+      - {id: gpu_shared_naive, params: {block_size: [32, 64, 128, 256, 512, 1024]}}
+      - {id: gpu_warp_atomic, params: {block_size: [32, 64, 128, 256, 512, 1024]}}
+      - {id: gpu_two_pass, params: {block_size: [32, 64, 128, 256, 512, 1024]}}
+      - {id: gpu_cub}
+      - {id: gpu_multi_cub_equal}
+      - {id: gpu_multi_cub_profiled}
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_profiled}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: [1, 2, 4, 8], pipeline_chunks: [4, 8, 16, 32, 64]}}
+      - {id: hybrid_dynamic_fixed, params: {chunk_size: [16384, 65536, 262144, 1048576, 4194304, 16777216, 33554432]}}
+      - {id: hybrid_dynamic_guided, params: {min_chunk_size: [16384, 65536, 262144, 1048576], guided_factor: [1.5, 2.0, 4.0, 8.0]}}
+      - id: hybrid_dynamic_adaptive
+        params:
+          min_chunk_size: [16384, 65536, 262144, 1048576]
+          max_chunk_size: [1048576, 4194304, 16777216, 33554432]
+          target_chunk_ms: [0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
+          ema_alpha: [0.1, 0.25, 0.5, 0.75, 1.0]
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: all_threads
+      cpu_numa_node: null
+      cpu_explicit_ids: null
+      gpu_sets: [each, all]
+      gpu_control_mode: dedicated
+      memory_policy: interleave

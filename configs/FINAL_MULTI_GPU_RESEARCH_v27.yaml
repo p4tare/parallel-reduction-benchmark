@@ -1,0 +1,181 @@
+# Confirmatory multi-GPU extension for the thesis.
+# prbench v2.7.0
+#
+# Scope: host-resident reduction on CPU, each individual GPU, every GPU pair and all GPUs.
+# The main multi-GPU algorithms are CUB equal/profiled and static hybrid equal/profiled.
+# They require no architecture-specific block/chunk tuning, so this configuration can be
+# treated as confirmatory after the full-stack smoke passes on the new machine.
+#
+# IMPORTANT: current multi-GPU path does NOT use P2P/NVLink for the data reduction itself.
+# Each GPU independently receives its host partition; scalar partials are merged on CPU.
+# P2P/NVLink topology is still stored in the manifest for interpretation.
+
+output_dir: results
+dataset_cache_dir: .prbench/datasets
+
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: "on"
+  jobs: null
+  cxx_compiler: null
+  cuda_host_compiler: null
+
+measurement:
+  warmup_runs: 5
+  scheduler_calibration_repetitions: 5
+  timing_repetitions: auto
+  timing_probe_repetitions: 10
+  timing_target_batch_seconds: 0.25
+  timing_min_repetitions: 30
+  timing_max_repetitions: 2000
+  energy_batch_repetitions: auto
+  energy_target_batch_seconds: 3.0
+  energy_min_repetitions: 10
+  energy_max_repetitions: 1000000
+  blocks: 5
+  randomization_seed: 20260827
+  max_dataset_ram_fraction: 0.60
+  gpu_memory_safety_fraction: 0.80
+  thermal_safety_gpu_c: 85
+  thermal_safety_cpu_c: 95
+  thermal_wait_timeout_s: 300
+  worker_event_timeout_s: 1800
+
+telemetry:
+  enabled: true
+  capture_cpu_frequency: true
+  capture_cpu_temperature: true
+  capture_gpu_state: true
+  capture_pre_post_timing: true
+  capture_pre_post_energy: true
+
+system_baselines:
+  capture_memory_inventory: true
+  stream_executable: null
+  stream_args: []
+  stream_timeout_s: 120
+
+energy:
+  enable_cpu: true
+  enable_gpu: true
+  gpu_power_fallback_poll_ms: 50
+
+experiments:
+  # Strong host and individual-GPU baselines. `each` measures every GPU separately,
+  # which is important before combining devices: nominally identical cards may have
+  # different PCIe links, clocks, temperatures or display load.
+  - id: individual_device_float32
+    operations: [sum, min, max]
+    datasets:
+      - {size: 1000000, dtype: float32, distribution: uniform, seed: 27101,
+         low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 100000000, dtype: float32, distribution: uniform, seed: 27101,
+         low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 1000000000, dtype: float32, distribution: uniform, seed: 27101,
+         low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+    algorithms:
+      - {id: cpu_omp_simd}
+      - {id: gpu_cub}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  - id: individual_device_int64
+    operations: [sum, min, max]
+    datasets:
+      - {size: 1000000, dtype: int64, distribution: integers, seed: 27102,
+         low: -1000000, high: 1000000, quantization: {mode: none}}
+      - {size: 100000000, dtype: int64, distribution: integers, seed: 27102,
+         low: -1000000, high: 1000000, quantization: {mode: none}}
+      - {size: 1000000000, dtype: int64, distribution: integers, seed: 27102,
+         low: -1000000, high: 1000000, quantization: {mode: none}}
+    algorithms:
+      - {id: cpu_omp_simd}
+      - {id: gpu_cub}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  # Multi-GPU scaling: all pairings plus the complete GPU set.  Equal partition is the
+  # transparent baseline; profiled partition accounts for unequal H2D/device throughput.
+  - id: multi_gpu_cub_float32
+    operations: [sum, min, max]
+    datasets:
+      - {size: 10000000, dtype: float32, distribution: uniform, seed: 27201,
+         low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 100000000, dtype: float32, distribution: uniform, seed: 27201,
+         low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 1000000000, dtype: float32, distribution: uniform, seed: 27201,
+         low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+    algorithms:
+      - {id: gpu_multi_cub_equal}
+      - {id: gpu_multi_cub_profiled}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [pairs, all]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  - id: multi_gpu_cub_int64
+    operations: [sum, min, max]
+    datasets:
+      - {size: 10000000, dtype: int64, distribution: integers, seed: 27202,
+         low: -1000000, high: 1000000, quantization: {mode: none}}
+      - {size: 100000000, dtype: int64, distribution: integers, seed: 27202,
+         low: -1000000, high: 1000000, quantization: {mode: none}}
+      - {size: 1000000000, dtype: int64, distribution: integers, seed: 27202,
+         low: -1000000, high: 1000000, quantization: {mode: none}}
+    algorithms:
+      - {id: gpu_multi_cub_equal}
+      - {id: gpu_multi_cub_profiled}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [pairs, all]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  # CPU + one/two/all GPUs.  Only the parameter-free static policies are used here so
+  # no new-machine tuning is mixed into the confirmatory dataset.
+  - id: hybrid_multi_gpu_float32
+    operations: [sum, min, max]
+    datasets:
+      - {size: 100000000, dtype: float32, distribution: uniform, seed: 27301,
+         low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 1000000000, dtype: float32, distribution: uniform, seed: 27301,
+         low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+    algorithms:
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_profiled}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each, pairs, all]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  - id: hybrid_multi_gpu_int64
+    operations: [sum, min, max]
+    datasets:
+      - {size: 100000000, dtype: int64, distribution: integers, seed: 27302,
+         low: -1000000, high: 1000000, quantization: {mode: none}}
+      - {size: 1000000000, dtype: int64, distribution: integers, seed: 27302,
+         low: -1000000, high: 1000000, quantization: {mode: none}}
+    algorithms:
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_profiled}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each, pairs, all]
+      gpu_control_mode: dedicated
+      memory_policy: interleave

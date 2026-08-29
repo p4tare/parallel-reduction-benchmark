@@ -1,0 +1,37 @@
+output_dir: results
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: false
+  enable_cuda: "off"
+measurement:
+  warmup_runs: 2
+  timing_repetitions: 3
+  energy_batch_repetitions: 3
+  energy_target_batch_seconds: 0.5
+  energy_min_repetitions: 3
+  energy_max_repetitions: 100
+  blocks: 1
+  randomization_seed: 4242
+  max_dataset_ram_fraction: 0.2
+  worker_event_timeout_s: 120
+  thermal_wait_timeout_s: 0
+energy:
+  enable_cpu: false
+  enable_gpu: false
+experiments:
+  - id: cpu_operations_smoke
+    operations: [sum, min, max]
+    datasets:
+      - {size: 100003, dtype: float32, distribution: uniform, seed: 17, low: -4.0, high: 9.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 100003, dtype: int32, distribution: integers, seed: 19, low: -100, high: 100}
+    algorithms:
+      - {id: cpu_seq}
+      - {id: cpu_omp}
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: default

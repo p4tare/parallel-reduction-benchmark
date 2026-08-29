@@ -1,0 +1,25 @@
+{
+  "numpy_longdouble_bits": 64,
+  "reference_max": 1.0,
+  "reference_method": "numpy_longdouble_chunked",
+  "reference_min": -1.0,
+  "reference_sum": -23808.453125,
+  "schema_version": 4,
+  "sha256": "b4d80343d3529a7c0bb556d3d4d8551d166c7e33be6f18ff096f96fca4cb0c1b",
+  "size_bytes": 4000000000,
+  "spec": {
+    "distribution": "uniform",
+    "dtype": "float32",
+    "high": 1.0,
+    "low": -1.0,
+    "quantization": {
+      "bits": 8,
+      "digits": null,
+      "mode": "binary_fraction"
+    },
+    "seed": 27301,
+    "size": 1000000000
+  },
+  "sum_abs": 499994069.328125,
+  "sum_condition_number": 21000.69528679743
+}

@@ -1,0 +1,25 @@
+{
+  "numpy_longdouble_bits": 64,
+  "reference_max": 1000000,
+  "reference_method": "numpy_int64_exact_with_prevalidated_no_overflow",
+  "reference_min": -1000000,
+  "reference_sum": 10340556656,
+  "schema_version": 4,
+  "sha256": "bfee49499706db7d736509552cefa1c1c2c390a1c36f27f4fd5f69f0c414189b",
+  "size_bytes": 8000000000,
+  "spec": {
+    "distribution": "integers",
+    "dtype": "int64",
+    "high": 1000000.0,
+    "low": -1000000.0,
+    "quantization": {
+      "bits": null,
+      "digits": null,
+      "mode": "none"
+    },
+    "seed": 27202,
+    "size": 1000000000
+  },
+  "sum_abs": 500011462258570.0,
+  "sum_condition_number": 48354.40478617208
+}

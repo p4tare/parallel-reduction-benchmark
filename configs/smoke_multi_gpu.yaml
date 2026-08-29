@@ -1,0 +1,38 @@
+# Run on a server with at least two visible NVIDIA GPUs.
+output_dir: results
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: "on"
+measurement:
+  warmup_runs: 2
+  timing_repetitions: 3
+  energy_batch_repetitions: 3
+  energy_target_batch_seconds: 1.0
+  energy_min_repetitions: 3
+  energy_max_repetitions: 100
+  blocks: 1
+  randomization_seed: 73002
+  max_dataset_ram_fraction: 0.2
+  worker_event_timeout_s: 1800
+  thermal_wait_timeout_s: 60
+energy:
+  enable_cpu: false
+  enable_gpu: false
+experiments:
+  - id: multi_gpu_smoke
+    datasets:
+      - {size: 4194304, dtype: float32, distribution: symmetric_uniform, seed: 19, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+    algorithms:
+      - {id: gpu_multi_cub_equal}
+      - {id: gpu_multi_cub_profiled}
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_profiled}
+      - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 65536, max_chunk_size: 1048576, target_chunk_ms: 5.0, ema_alpha: 0.25}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [all]
+      gpu_control_mode: dedicated
+      memory_policy: interleave

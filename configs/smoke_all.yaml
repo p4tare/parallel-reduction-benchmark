@@ -1,0 +1,54 @@
+# One portable smoke configuration. Unsupported CUDA variants are omitted automatically
+# on CPU-only servers; on an NVIDIA CUDA server it exercises the complete algorithm catalog.
+output_dir: results
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: auto
+measurement:
+  warmup_runs: 2
+  timing_repetitions: 3
+  energy_batch_repetitions: 3
+  energy_target_batch_seconds: 1.0
+  energy_min_repetitions: 3
+  energy_max_repetitions: 100
+  blocks: 1
+  randomization_seed: 424242
+  max_dataset_ram_fraction: 0.2
+  worker_event_timeout_s: 1800
+  thermal_wait_timeout_s: 60
+energy:
+  enable_cpu: false
+  enable_gpu: false
+experiments:
+  - id: all_algorithms_smoke
+    datasets:
+      - size: 1048576
+        dtype: float32
+        distribution: symmetric_uniform
+        seed: 7
+        low: -1.0
+        high: 1.0
+        quantization: {mode: binary_fraction, bits: 8}
+    algorithms:
+      - {id: cpu_seq}
+      - {id: cpu_omp}
+      - {id: cpu_omp_simd}
+      - {id: gpu_global_atomic, params: {block_size: 256}}
+      - {id: gpu_shared_naive, params: {block_size: 256}}
+      - {id: gpu_warp_atomic, params: {block_size: 256}}
+      - {id: gpu_two_pass, params: {block_size: 256}}
+      - {id: gpu_cub}
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_profiled}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 4}}
+      - {id: hybrid_dynamic_fixed, params: {chunk_size: 262144}}
+      - {id: hybrid_dynamic_guided, params: {min_chunk_size: 65536, guided_factor: 2.0}}
+      - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 65536, max_chunk_size: 1048576, target_chunk_ms: 5.0, ema_alpha: 0.25}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: interleave

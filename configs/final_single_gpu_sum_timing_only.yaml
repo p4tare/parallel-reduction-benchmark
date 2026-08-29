@@ -1,0 +1,147 @@
+# CONFIRMATORY TIMING-ONLY SINGLE-GPU SUM CAMPAIGN
+#
+# Hardware target: current single-GPU server.
+# Tunables were frozen from the independent v2.3 pilot before this file is run.
+# Do not change tunables after inspecting these confirmatory results.
+
+output_dir: results
+
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: "on"
+  cxx_compiler: /usr/bin/g++-13
+  cuda_host_compiler: /usr/bin/g++-13
+
+measurement:
+  warmup_runs: 5
+  timing_repetitions: 30
+  energy_batch_repetitions: auto
+  energy_target_batch_seconds: 3.0
+  energy_min_repetitions: 10
+  energy_max_repetitions: 1000000
+  blocks: 5
+  randomization_seed: 20260820
+  max_dataset_ram_fraction: 0.65
+  thermal_safety_gpu_c: 90
+  thermal_safety_cpu_c: 95
+  worker_event_timeout_s: 1800
+  thermal_wait_timeout_s: 300
+
+energy:
+  enable_cpu: false
+  enable_gpu: false
+  gpu_power_fallback_poll_ms: 100
+
+# Use non-zero deterministic floating-point data for the confirmatory campaign.
+# Binary-fraction quantization keeps individual input values exactly representable,
+# while different reduction orders may still expose accumulation differences.
+experiments:
+  # Primary all-core comparison. cpu_seq is kept out of this group because an
+  # "all-core" sequential run would simply be pinned to one selected P-core.
+  - id: primary_all_cores_dedicated
+    operations: [sum]
+    datasets: &float32_datasets
+      - {size: 10000,     dtype: float32, distribution: uniform, seed: 20260820, low: 0.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 100000,    dtype: float32, distribution: uniform, seed: 20260820, low: 0.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 1000000,   dtype: float32, distribution: uniform, seed: 20260820, low: 0.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 10000000,  dtype: float32, distribution: uniform, seed: 20260820, low: 0.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 100000000, dtype: float32, distribution: uniform, seed: 20260820, low: 0.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+    algorithms:
+      - {id: cpu_omp}
+      - {id: cpu_omp_simd}
+      - {id: gpu_global_atomic, params: {block_size: 128}}
+      - {id: gpu_shared_naive, params: {block_size: 256}}
+      - {id: gpu_warp_atomic, params: {block_size: 256}}
+      - {id: gpu_two_pass, params: {block_size: 128}}
+      - {id: gpu_cub}
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_profiled}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
+      - {id: hybrid_dynamic_fixed, params: {chunk_size: 4194304}}
+      - {id: hybrid_dynamic_guided, params: {min_chunk_size: 262144, guided_factor: 4.0}}
+      - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 65536, max_chunk_size: 16777216, target_chunk_ms: 2.0, ema_alpha: 0.5}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: all_threads
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  # Single-thread references: pin explicitly by core class instead of pretending
+  # that a sequential algorithm can use "all" CPU cores.
+  - id: sequential_performance_core
+    operations: [sum]
+    datasets: *float32_datasets
+    algorithms:
+      - {id: cpu_seq}
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  - id: sequential_efficiency_core
+    operations: [sum]
+    datasets: *float32_datasets
+    algorithms:
+      - {id: cpu_seq}
+    hardware:
+      cpu_core_class: efficiency
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  # P-only and E-only CPU/hybrid comparisons. GPU-only algorithms are deliberately
+  # not duplicated here because CPU core class is not their computational resource.
+  - id: performance_cores_dedicated
+    operations: [sum]
+    datasets: *float32_datasets
+    algorithms: &cpu_hybrid_algorithms
+      - {id: cpu_omp}
+      - {id: cpu_omp_simd}
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_profiled}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
+      - {id: hybrid_dynamic_fixed, params: {chunk_size: 4194304}}
+      - {id: hybrid_dynamic_guided, params: {min_chunk_size: 262144, guided_factor: 4.0}}
+      - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 65536, max_chunk_size: 16777216, target_chunk_ms: 2.0, ema_alpha: 0.5}}
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: all_threads
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  - id: efficiency_cores_dedicated
+    operations: [sum]
+    datasets: *float32_datasets
+    algorithms: *cpu_hybrid_algorithms
+    hardware:
+      cpu_core_class: efficiency
+      cpu_thread_policy: all_threads
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  # Dedicated-vs-shared GPU-control sensitivity is evaluated only for the hybrid
+  # algorithms and the main all-core CPU configuration, avoiding redundant sweeps.
+  - id: all_cores_shared_gpu_control
+    operations: [sum]
+    datasets: *float32_datasets
+    algorithms:
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_profiled}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
+      - {id: hybrid_dynamic_fixed, params: {chunk_size: 4194304}}
+      - {id: hybrid_dynamic_guided, params: {min_chunk_size: 262144, guided_factor: 4.0}}
+      - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 65536, max_chunk_size: 16777216, target_chunk_ms: 2.0, ema_alpha: 0.5}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: all_threads
+      gpu_sets: [each]
+      gpu_control_mode: shared
+      memory_policy: interleave

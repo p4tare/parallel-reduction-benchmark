@@ -1,0 +1,92 @@
+# Fast validation for a new multi-GPU machine. NOT thesis result data.
+# Run only after `prbench doctor` and `prbench preflight`.
+output_dir: results
+dataset_cache_dir: .prbench/datasets
+
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: "on"
+  jobs: null
+  cxx_compiler: null
+  cuda_host_compiler: null
+
+measurement:
+  warmup_runs: 2
+  scheduler_calibration_repetitions: 2
+  timing_repetitions: auto
+  timing_probe_repetitions: 3
+  timing_target_batch_seconds: 0.05
+  timing_min_repetitions: 5
+  timing_max_repetitions: 1000
+  energy_batch_repetitions: auto
+  energy_target_batch_seconds: 0.5
+  energy_min_repetitions: 3
+  energy_max_repetitions: 10000
+  blocks: 1
+  randomization_seed: 20260827
+  max_dataset_ram_fraction: 0.20
+  gpu_memory_safety_fraction: 0.80
+  thermal_safety_gpu_c: 85
+  thermal_safety_cpu_c: 95
+  thermal_wait_timeout_s: 120
+  worker_event_timeout_s: 600
+
+telemetry:
+  enabled: true
+  capture_cpu_frequency: true
+  capture_cpu_temperature: true
+  capture_gpu_state: true
+  capture_pre_post_timing: true
+  capture_pre_post_energy: true
+
+system_baselines:
+  capture_memory_inventory: true
+  stream_executable: null
+  stream_args: []
+  stream_timeout_s: 120
+
+energy:
+  enable_cpu: true
+  enable_gpu: true
+  gpu_power_fallback_poll_ms: 50
+
+experiments:
+  - id: single_gpu_validation
+    operations: [sum, min, max]
+    datasets:
+      - {size: 1048576, dtype: float32, distribution: uniform, seed: 27001,
+         low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+    algorithms:
+      - {id: cpu_omp_simd}
+      - {id: gpu_cub}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  - id: multi_gpu_validation
+    operations: [sum, min, max]
+    datasets:
+      - {size: 4194304, dtype: float32, distribution: uniform, seed: 27002,
+         low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 2097152, dtype: int64, distribution: integers, seed: 27003,
+         low: -1000000, high: 1000000, quantization: {mode: none}}
+    algorithms:
+      - {id: gpu_multi_cub_equal}
+      - {id: gpu_multi_cub_profiled}
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_profiled}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 8}}
+      - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 65536, max_chunk_size: 1048576,
+                                                target_chunk_ms: 1.0, ema_alpha: 0.5}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      # On 2 GPUs: one pair. On 3 GPUs: all 3 pairs + all 3 GPUs.
+      gpu_sets: [pairs, all]
+      gpu_control_mode: dedicated
+      memory_policy: interleave

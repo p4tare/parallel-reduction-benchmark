@@ -1,0 +1,260 @@
+-- The CXX compiler identification is GNU 13.4.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/x86_64-linux-gnu-g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- The CUDA compiler identification is NVIDIA 12.4.131 with host compiler GNU 13.4.0
+-- Detecting CUDA compiler ABI info
+-- Detecting CUDA compiler ABI info - done
+-- Check for working CUDA compiler: /usr/bin/nvcc - skipped
+-- Detecting CUDA compile features
+-- Detecting CUDA compile features - done
+-- Found CUDAToolkit: /usr/include (found version "12.4.131")
+-- Configuring done (3.5s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/macierz/s188615/reduction_benchmark/build
+[ 28%] Building CXX object CMakeFiles/prbench-worker.dir/native/src/main.cpp.o
+[ 42%] Building CXX object CMakeFiles/prbench-worker.dir/native/src/cli.cpp.o
+[ 42%] Building CXX object CMakeFiles/prbench-worker.dir/native/src/dataset.cpp.o
+[ 42%] Building CXX object CMakeFiles/prbench-worker.dir/native/src/cpu_backend.cpp.o
+[ 71%] Building CXX object CMakeFiles/prbench-worker.dir/native/src/strategy.cpp.o
+[ 85%] Building CUDA object CMakeFiles/prbench-worker.dir/native/src/gpu_backend.cu.o
+[100%] Linking CXX executable prbench-worker
+[100%] Built target prbench-worker
+Preparing 3 unique dataset(s) before measurements...
+  dataset [1/3] N=2097152 dtype=int64
+  dataset [2/3] N=1048576 dtype=float32
+  dataset [3/3] N=4194304 dtype=float32
+Run directory: results/run_20260828T160051.444921Z
+Planned task instances: 45
+[1/45] hybrid_static_equal op=max N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=33 reps (probe_mean=1516.070 us)
+    timing_mean=1567.050 us; energy_batch=320 reps (~0.50s)
+    energy batch complete in 0.50s
+  completed in 1.82s
+[2/45] gpu_multi_cub_profiled op=max N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=20 reps (probe_mean=2580.290 us)
+    timing_mean=2797.200 us; energy_batch=179 reps (~0.50s)
+    energy batch complete in 0.56s
+  completed in 1.64s
+[3/45] hybrid_static_profiled op=max N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=397 reps (probe_mean=126.215 us)
+    timing_mean=74.496 us; energy_batch=6712 reps (~0.50s)
+    energy batch complete in 0.47s
+  completed in 1.76s
+[4/45] hybrid_static_profiled_async op=min N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=9 reps (probe_mean=5995.340 us)
+    timing_mean=5996.460 us; energy_batch=84 reps (~0.50s)
+    energy batch complete in 0.17s
+  completed in 1.36s
+[5/45] gpu_cub op=max N=1048576 dtype=float32 GPUs=[1] block=1/1
+    timing_batch=73 reps (probe_mean=693.862 us)
+    timing_mean=693.256 us; energy_batch=722 reps (~0.50s)
+    energy batch complete in 0.50s
+  completed in 1.30s
+[6/45] hybrid_static_profiled_async op=sum N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=456 reps (probe_mean=109.817 us)
+    timing_mean=62.005 us; energy_batch=8064 reps (~0.50s)
+    energy batch complete in 0.59s
+  completed in 1.87s
+[7/45] cpu_omp_simd op=min N=1048576 dtype=float32 GPUs=[] block=1/1
+    timing_batch=1000 reps (probe_mean=27.884 us)
+    timing_mean=17.950 us; energy_batch=10000 reps (~0.18s)
+    energy batch complete in 0.15s
+  completed in 0.93s
+[8/45] gpu_multi_cub_profiled op=max N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=18 reps (probe_mean=2912.350 us)
+    timing_mean=2773.820 us; energy_batch=181 reps (~0.50s)
+    energy batch complete in 0.57s
+  completed in 1.73s
+[9/45] hybrid_static_equal op=sum N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=34 reps (probe_mean=1493.470 us)
+    timing_mean=1573.170 us; energy_batch=318 reps (~0.50s)
+    energy batch complete in 0.48s
+  completed in 1.57s
+[10/45] hybrid_dynamic_adaptive op=min N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=65 reps (probe_mean=774.457 us)
+    timing_mean=991.995 us; energy_batch=505 reps (~0.50s)
+    energy batch complete in 0.45s
+  completed in 1.52s
+[11/45] hybrid_static_equal op=min N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=34 reps (probe_mean=1498.590 us)
+    timing_mean=1510.830 us; energy_batch=331 reps (~0.50s)
+    energy batch complete in 0.50s
+  completed in 1.54s
+[12/45] gpu_cub op=min N=1048576 dtype=float32 GPUs=[0] block=1/1
+    timing_batch=70 reps (probe_mean=715.590 us)
+    timing_mean=730.027 us; energy_batch=685 reps (~0.50s)
+    energy batch complete in 0.49s
+  completed in 1.29s
+[13/45] gpu_multi_cub_equal op=sum N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=18 reps (probe_mean=2940.810 us)
+    timing_mean=2803.850 us; energy_batch=179 reps (~0.50s)
+    energy batch complete in 0.52s
+  completed in 1.59s
+[14/45] hybrid_static_profiled op=sum N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=292 reps (probe_mean=171.321 us)
+    timing_mean=88.153 us; energy_batch=5672 reps (~0.50s)
+    energy batch complete in 0.45s
+  completed in 1.69s
+[15/45] gpu_multi_cub_profiled op=sum N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=18 reps (probe_mean=2931.140 us)
+    timing_mean=2797.440 us; energy_batch=179 reps (~0.50s)
+    energy batch complete in 0.58s
+  completed in 1.79s
+[16/45] hybrid_static_profiled_async op=max N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=339 reps (probe_mean=147.546 us)
+    timing_mean=75.542 us; energy_batch=6619 reps (~0.50s)
+    energy batch complete in 0.47s
+  completed in 1.75s
+[17/45] hybrid_static_equal op=max N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=34 reps (probe_mean=1502.460 us)
+    timing_mean=1496.650 us; energy_batch=335 reps (~0.50s)
+    energy batch complete in 0.51s
+  completed in 1.64s
+[18/45] hybrid_dynamic_adaptive op=min N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=55 reps (probe_mean=916.109 us)
+    timing_mean=987.110 us; energy_batch=507 reps (~0.50s)
+    energy batch complete in 0.56s
+  completed in 1.61s
+[19/45] hybrid_static_profiled_async op=min N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=26 reps (probe_mean=1979.910 us)
+    timing_mean=2111.000 us; energy_batch=237 reps (~0.50s)
+    energy batch complete in 0.51s
+  completed in 1.62s
+[20/45] hybrid_static_equal op=min N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=34 reps (probe_mean=1479.380 us)
+    timing_mean=1472.810 us; energy_batch=340 reps (~0.50s)
+    energy batch complete in 0.51s
+  completed in 1.53s
+[21/45] hybrid_static_profiled_async op=sum N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=25 reps (probe_mean=2021.750 us)
+    timing_mean=2118.430 us; energy_batch=237 reps (~0.50s)
+    energy batch complete in 0.50s
+  completed in 1.73s
+[22/45] cpu_omp_simd op=max N=1048576 dtype=float32 GPUs=[] block=1/1
+    timing_batch=1000 reps (probe_mean=32.768 us)
+    timing_mean=18.156 us; energy_batch=10000 reps (~0.18s)
+    energy batch complete in 0.15s
+  completed in 0.93s
+[23/45] hybrid_dynamic_adaptive op=sum N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=50 reps (probe_mean=1010.950 us)
+    timing_mean=1093.720 us; energy_batch=458 reps (~0.50s)
+    energy batch complete in 0.51s
+  completed in 1.52s
+[24/45] gpu_multi_cub_profiled op=min N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=20 reps (probe_mean=2552.310 us)
+    timing_mean=2764.720 us; energy_batch=181 reps (~0.50s)
+    energy batch complete in 0.53s
+  completed in 1.65s
+[25/45] hybrid_static_profiled op=min N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=392 reps (probe_mean=127.687 us)
+    timing_mean=90.100 us; energy_batch=5550 reps (~0.50s)
+    energy batch complete in 0.44s
+  completed in 1.79s
+[26/45] gpu_multi_cub_profiled op=sum N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=20 reps (probe_mean=2573.360 us)
+    timing_mean=2814.930 us; energy_batch=178 reps (~0.50s)
+    energy batch complete in 0.54s
+  completed in 1.69s
+[27/45] hybrid_static_profiled op=sum N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=420 reps (probe_mean=119.175 us)
+    timing_mean=77.516 us; energy_batch=6451 reps (~0.50s)
+    energy batch complete in 0.47s
+  completed in 1.79s
+[28/45] gpu_multi_cub_equal op=max N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=17 reps (probe_mean=2943.480 us)
+    timing_mean=2805.530 us; energy_batch=179 reps (~0.50s)
+    energy batch complete in 0.58s
+  completed in 1.73s
+[29/45] gpu_cub op=sum N=1048576 dtype=float32 GPUs=[0] block=1/1
+    timing_batch=71 reps (probe_mean=704.989 us)
+    timing_mean=732.122 us; energy_batch=683 reps (~0.50s)
+    energy batch complete in 0.49s
+  completed in 1.38s
+[30/45] gpu_cub op=min N=1048576 dtype=float32 GPUs=[1] block=1/1
+    timing_batch=73 reps (probe_mean=690.541 us)
+    timing_mean=697.652 us; energy_batch=717 reps (~0.50s)
+    energy batch complete in 0.50s
+  completed in 1.39s
+[31/45] gpu_cub op=max N=1048576 dtype=float32 GPUs=[0] block=1/1
+    timing_batch=74 reps (probe_mean=677.383 us)
+    timing_mean=700.278 us; energy_batch=715 reps (~0.50s)
+    energy batch complete in 0.50s
+  completed in 1.29s
+[32/45] hybrid_static_equal op=sum N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=35 reps (probe_mean=1453.080 us)
+    timing_mean=1501.830 us; energy_batch=333 reps (~0.50s)
+    energy batch complete in 0.49s
+  completed in 1.53s
+[33/45] gpu_multi_cub_profiled op=min N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=20 reps (probe_mean=2587.570 us)
+    timing_mean=2616.210 us; energy_batch=192 reps (~0.50s)
+    energy batch complete in 0.52s
+  completed in 1.59s
+[34/45] hybrid_dynamic_adaptive op=max N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=48 reps (probe_mean=1046.620 us)
+    timing_mean=1105.880 us; energy_batch=453 reps (~0.50s)
+    energy batch complete in 0.50s
+  completed in 1.52s
+[35/45] hybrid_static_profiled_async op=max N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=516 reps (probe_mean=97.041 us)
+    timing_mean=96.955 us; energy_batch=5158 reps (~0.50s)
+    energy batch complete in 0.41s
+  completed in 1.64s
+[36/45] gpu_cub op=sum N=1048576 dtype=float32 GPUs=[1] block=1/1
+    timing_batch=71 reps (probe_mean=711.950 us)
+    timing_mean=714.745 us; energy_batch=700 reps (~0.50s)
+    energy batch complete in 0.49s
+  completed in 1.31s
+[37/45] hybrid_static_profiled op=max N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=24 reps (probe_mean=2124.440 us)
+    timing_mean=2191.510 us; energy_batch=229 reps (~0.50s)
+    energy batch complete in 0.51s
+  completed in 1.69s
+[38/45] hybrid_dynamic_adaptive op=sum N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=52 reps (probe_mean=975.767 us)
+    timing_mean=1071.370 us; energy_batch=467 reps (~0.50s)
+    energy batch complete in 0.50s
+  completed in 1.56s
+[39/45] cpu_omp_simd op=sum N=1048576 dtype=float32 GPUs=[] block=1/1
+    timing_batch=1000 reps (probe_mean=29.341 us)
+    timing_mean=17.327 us; energy_batch=10000 reps (~0.17s)
+    energy batch complete in 0.14s
+  completed in 0.90s
+[40/45] hybrid_dynamic_adaptive op=max N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=50 reps (probe_mean=1016.650 us)
+    timing_mean=1072.440 us; energy_batch=467 reps (~0.50s)
+    energy batch complete in 0.51s
+  completed in 1.56s
+[41/45] gpu_multi_cub_equal op=min N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=18 reps (probe_mean=2786.700 us)
+    timing_mean=3059.390 us; energy_batch=164 reps (~0.50s)
+    energy batch complete in 0.54s
+  completed in 1.63s
+[42/45] gpu_multi_cub_equal op=max N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=19 reps (probe_mean=2674.150 us)
+    timing_mean=2971.880 us; energy_batch=169 reps (~0.50s)
+    energy batch complete in 0.53s
+  completed in 1.68s
+[43/45] hybrid_static_profiled op=min N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=363 reps (probe_mean=138.121 us)
+    timing_mean=74.004 us; energy_batch=6757 reps (~0.50s)
+    energy batch complete in 0.49s
+  completed in 1.87s
+[44/45] gpu_multi_cub_equal op=sum N=4194304 dtype=float32 GPUs=[0, 1] block=1/1
+    timing_batch=17 reps (probe_mean=2956.480 us)
+    timing_mean=2809.150 us; energy_batch=178 reps (~0.50s)
+    energy batch complete in 0.58s
+  completed in 1.73s
+[45/45] gpu_multi_cub_equal op=min N=2097152 dtype=int64 GPUs=[0, 1] block=1/1
+    timing_batch=16 reps (probe_mean=3141.240 us)
+    timing_mean=3135.280 us; energy_batch=160 reps (~0.50s)
+    energy batch complete in 0.49s
+  completed in 1.67s
+Task status counts: {"ok": 45}
+Finished. Results: results/run_20260828T160051.444921Z

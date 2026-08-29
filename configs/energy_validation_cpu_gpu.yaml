@@ -1,0 +1,42 @@
+# Short pre-confirmatory validation of the energy path.
+# This is NOT thesis result data.
+output_dir: results
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: "on"
+  cxx_compiler: /usr/bin/g++-13
+  cuda_host_compiler: /usr/bin/g++-13
+measurement:
+  warmup_runs: 5
+  timing_repetitions: 10
+  energy_batch_repetitions: auto
+  energy_target_batch_seconds: 3.0
+  energy_min_repetitions: 10
+  energy_max_repetitions: 1000000
+  blocks: 2
+  randomization_seed: 20260821
+  max_dataset_ram_fraction: 0.65
+  thermal_safety_gpu_c: 90
+  thermal_safety_cpu_c: 95
+  worker_event_timeout_s: 1800
+  thermal_wait_timeout_s: 300
+energy:
+  enable_cpu: true
+  enable_gpu: true
+  gpu_power_fallback_poll_ms: 100
+experiments:
+  - id: energy_path_validation
+    datasets:
+      - {size: 10000000, dtype: float32, distribution: uniform, seed: 20260820, low: 0.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+    algorithms:
+      - {id: cpu_omp_simd}
+      - {id: gpu_cub}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: all_threads
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
