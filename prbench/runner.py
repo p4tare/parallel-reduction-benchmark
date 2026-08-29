@@ -11,7 +11,7 @@ from typing import Any
 
 import psutil
 
-from .capacity import dataset_size_bytes, gpu_capacity_rows
+from .capacity import cache_rotated_resident_bytes, dataset_size_bytes, gpu_capacity_rows
 from .datasets import DatasetArtifact, DatasetFactory
 from .energy import CompositeEnergyMeter
 from .models import RootConfig, SystemTopologyModel
@@ -508,11 +508,9 @@ class ExperimentRunner:
 
     def _dataset_resident_bytes(self, dataset_bytes: int) -> int:
         m = self.config.measurement
-        if dataset_bytes <= 0 or m.cache_rotation_target_bytes <= 0:
-            return dataset_bytes
-        desired = math.ceil(m.cache_rotation_target_bytes / dataset_bytes)
-        replicas = max(1, min(m.cache_rotation_max_replicas, desired))
-        return dataset_bytes * replicas
+        return cache_rotated_resident_bytes(
+            dataset_bytes, m.cache_rotation_target_bytes, m.cache_rotation_max_replicas
+        )
 
     def _validate_dataset_spec_memory_budget(self, spec) -> None:
         dataset_bytes = dataset_size_bytes(spec)
