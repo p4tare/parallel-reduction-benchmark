@@ -82,12 +82,12 @@ experiments:
       - {id: gpu_warp_atomic, params: {block_size: 256}}
       - {id: gpu_two_pass, params: {block_size: 256}}
       - {id: gpu_cub}
-      - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunks: 8}}
+      - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunk_elements: 65536}}
       - {id: gpu_multi_cub_equal}
       - {id: gpu_multi_cub_profiled}
       - {id: hybrid_static_equal}
       - {id: hybrid_static_profiled}
-      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 8}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunk_elements: 65536}}
       - {id: hybrid_dynamic_fixed, params: {chunk_size: 65536}}
       - {id: hybrid_dynamic_guided, params: {min_chunk_size: 32768, guided_factor: 2.0}}
       - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 32768, max_chunk_size: 262144,
