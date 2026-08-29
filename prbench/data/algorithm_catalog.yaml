@@ -97,7 +97,7 @@ algorithms:
     uses_cpu: false
     uses_gpu: true
     supports_multi_gpu: false
-    tunables: [pipeline_streams, pipeline_chunks]
+    tunables: [pipeline_streams, pipeline_chunks, pipeline_chunk_elements]
     role: optimized_gpu_transfer_overlap
 
   - id: gpu_multi_cub_equal
@@ -158,7 +158,7 @@ algorithms:
     uses_cpu: true
     uses_gpu: true
     supports_multi_gpu: true
-    tunables: [pipeline_streams, pipeline_chunks]
+    tunables: [pipeline_streams, pipeline_chunks, pipeline_chunk_elements]
     role: transfer_overlap_variant
 
   - id: hybrid_dynamic_fixed
