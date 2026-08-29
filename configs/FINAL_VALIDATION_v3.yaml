@@ -83,6 +83,7 @@ experiments:
       - {id: gpu_two_pass, params: {block_size: 256}}
       - {id: gpu_cub}
       - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunk_elements: 65536}}
+      - {id: gpu_cub_device_resident}
       - {id: gpu_multi_cub_equal}
       - {id: gpu_multi_cub_profiled}
       - {id: hybrid_static_equal}
