@@ -77,3 +77,23 @@ def test_cache_rotation_memory_accounting() -> None:
     assert cache_rotation_replicas(4_000_000, 256_000_000, 1024) == 64
     assert cache_rotated_resident_bytes(4_000_000, 256_000_000, 1024) == 256_000_000
     assert cache_rotation_replicas(400_000_000, 256_000_000, 1024) == 1
+
+
+def test_gpu_only_async_fixed_chunk_capacity_is_bounded() -> None:
+    cfg = RootConfig(
+        measurement={"blocks": 1, "timing_repetitions": 3},
+        energy={"enable_cpu": False, "enable_gpu": False},
+        experiments=[ExperimentGroup(
+            id="bounded_async",
+            datasets=[DatasetSpec(size=1_000_000_000, dtype=DType.float64)],
+            algorithms=[{"id": "gpu_cub_async", "params": {
+                "pipeline_streams": 2,
+                "pipeline_chunk_elements": 16_777_216,
+            }}],
+            hardware=HardwareConfig(gpu_sets=[0]),
+        )],
+    )
+    task = SweepPlanner(AlgorithmCatalog(), topology()).plan(cfg)[0]
+    rows = gpu_capacity_rows(task, topology(), 0.8)
+    assert rows[0]["estimated_input_bytes"] == 268_435_456
+    assert rows[0]["estimate_kind"] == "exact"
