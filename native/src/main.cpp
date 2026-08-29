@@ -286,7 +286,10 @@ int main(int argc, char** argv) {
         std::cout << "{\"event\":\"ready\",\"warmup_median_us\":"
                   << strategy->warmup_median_us()
                   << ",\"strategy_create_us\":" << strategy_create_us
-                  << ",\"prepare_us\":" << prepare_us << ",";
+                  << ",\"prepare_us\":" << prepare_us
+                  << ",\"dataset_replica_count\":" << dataset.replica_count()
+                  << ",\"dataset_resident_bytes\":" << dataset.resident_bytes()
+                  << ",";
         emit_prepare_metrics(strategy->prepare_metrics());
         std::cout << "}" << std::endl;
 
