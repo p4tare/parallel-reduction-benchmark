@@ -1,0 +1,100 @@
+# FINAL v3 correctness and integration gate. NOT thesis performance data.
+# Run after doctor/preflight and before any tuning/research campaign.
+output_dir: results
+dataset_cache_dir: .prbench/datasets
+
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: "on"
+  jobs: null
+  cxx_compiler: null
+  cuda_host_compiler: null
+
+measurement:
+  warmup_runs: 2
+  scheduler_calibration_repetitions: 3
+  timing_repetitions: 3
+  timing_probe_repetitions: 3
+  timing_target_batch_seconds: 0.05
+  timing_min_repetitions: 3
+  timing_max_repetitions: 10
+  cache_rotation_target_bytes: 268435456
+  cache_rotation_max_replicas: 1024
+  energy_batch_repetitions: 3
+  energy_target_batch_seconds: 0.5
+  energy_min_repetitions: 1
+  energy_max_repetitions: 10
+  blocks: 1
+  randomization_seed: 20260829
+  max_dataset_ram_fraction: 0.50
+  gpu_memory_safety_fraction: 0.80
+  thermal_safety_gpu_c: 85
+  thermal_safety_cpu_c: 95
+  thermal_wait_timeout_s: 120
+  worker_event_timeout_s: 900
+  strict_preflight: false
+  max_preflight_cpu_load_percent: 20.0
+  allow_gpu_graphics_processes: true
+
+energy:
+  enable_cpu: false
+  enable_gpu: false
+  gpu_power_fallback_poll_ms: 50
+
+telemetry:
+  enabled: true
+  capture_cpu_frequency: true
+  capture_cpu_temperature: true
+  capture_gpu_state: true
+  capture_pre_post_timing: true
+  capture_pre_post_energy: false
+
+system_baselines:
+  capture_memory_inventory: true
+  stream_executable: null
+  stream_args: []
+  stream_timeout_s: 120
+
+experiments:
+  - id: all_algorithms_correctness
+    operations: [sum, min, max]
+    datasets:
+      - {size: 33, dtype: int32, distribution: integers, seed: 30101, low: -1, high: 1}
+      - {size: 100003, dtype: int32, distribution: integers, seed: 30102, low: -1, high: 1}
+      - {size: 31, dtype: int64, distribution: integers, seed: 30201, low: -1000, high: 1000}
+      - {size: 100003, dtype: int64, distribution: integers, seed: 30202, low: -1000, high: 1000}
+      - {size: 37, dtype: float32, distribution: uniform, seed: 30301, low: -1.0, high: 1.0,
+         quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 100003, dtype: float32, distribution: symmetric_uniform, seed: 30302, low: -1.0, high: 1.0,
+         quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 35, dtype: float64, distribution: uniform, seed: 30401, low: -1.0, high: 1.0,
+         quantization: {mode: binary_fraction, bits: 16}}
+      - {size: 100003, dtype: float64, distribution: symmetric_uniform, seed: 30402, low: -1.0, high: 1.0,
+         quantization: {mode: binary_fraction, bits: 16}}
+    algorithms:
+      - {id: cpu_seq}
+      - {id: cpu_omp}
+      - {id: cpu_omp_simd}
+      - {id: gpu_global_atomic, params: {block_size: 256}}
+      - {id: gpu_shared_naive, params: {block_size: 256}}
+      - {id: gpu_warp_atomic, params: {block_size: 256}}
+      - {id: gpu_two_pass, params: {block_size: 256}}
+      - {id: gpu_cub}
+      - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunks: 8}}
+      - {id: gpu_multi_cub_equal}
+      - {id: gpu_multi_cub_profiled}
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_profiled}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 8}}
+      - {id: hybrid_dynamic_fixed, params: {chunk_size: 65536}}
+      - {id: hybrid_dynamic_guided, params: {min_chunk_size: 32768, guided_factor: 2.0}}
+      - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 32768, max_chunk_size: 262144,
+                                                target_chunk_ms: 1.0, ema_alpha: 0.5}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each, all]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
