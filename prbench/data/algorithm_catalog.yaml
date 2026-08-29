@@ -88,6 +88,18 @@ algorithms:
     supports_multi_gpu: false
     role: library_gpu_baseline
 
+  - id: gpu_cub_async
+    label: CUB DeviceReduce + pinned asynchronous pipeline
+    scheduler: gpu_only
+    gpu_backend: cub
+    transfer_policy: async_pipeline
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    tunables: [pipeline_streams, pipeline_chunks]
+    role: optimized_gpu_transfer_overlap
+
   - id: gpu_multi_cub_equal
     label: Multi-GPU CUB equal partition
     scheduler: gpu_static_equal
