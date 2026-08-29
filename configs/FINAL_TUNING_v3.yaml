@@ -60,6 +60,40 @@ system_baselines:
   stream_timeout_s: 120
 
 experiments:
+  # CPU resource-policy tuning. These two groups are intentionally identical except for
+  # SMT usage. Pick the policy with the best robust performance across the training grid.
+  - id: tune_cpu_one_thread_per_core
+    operations: [sum, min, max]
+    datasets: &cpu_tuning_datasets
+      - {size: 10000000, dtype: float32, distribution: uniform, seed: 30901, low: -1.0, high: 1.0,
+         quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 100000000, dtype: float32, distribution: uniform, seed: 30902, low: -1.0, high: 1.0,
+         quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 10000000, dtype: int64, distribution: integers, seed: 30903, low: -1000000, high: 1000000}
+      - {size: 100000000, dtype: int64, distribution: integers, seed: 30904, low: -1000000, high: 1000000}
+    algorithms:
+      - {id: cpu_omp}
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  - id: tune_cpu_all_threads
+    operations: [sum, min, max]
+    datasets: *cpu_tuning_datasets
+    algorithms:
+      - {id: cpu_omp}
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: all_threads
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
   # Micro-kernel tuning. CUB sync itself is parameter-free; gpu_cub_async tunes the
   # transfer pipeline independently from the hybrid scheduler.
   - id: tune_single_gpu
