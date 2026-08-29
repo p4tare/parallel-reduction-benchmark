@@ -1,4 +1,9 @@
-from prbench.capacity import dataset_size_bytes, gpu_capacity_rows
+from prbench.capacity import (
+    cache_rotation_replicas,
+    cache_rotated_resident_bytes,
+    dataset_size_bytes,
+    gpu_capacity_rows,
+)
 from prbench.catalog import AlgorithmCatalog
 from prbench.models import DType, DatasetSpec, ExperimentGroup, HardwareConfig, RootConfig, SystemTopologyModel, TopologyCpu, TopologyGpu
 from prbench.sweep import SweepPlanner
@@ -66,3 +71,9 @@ def test_gpu_only_async_capacity_uses_staging_slots() -> None:
     # 16M / 8 chunks * 2 staging slots * 4 B = 16 MB of device input buffers.
     assert rows[0]["estimated_input_bytes"] == 16_000_000
     assert rows[0]["estimate_kind"] == "exact"
+
+
+def test_cache_rotation_memory_accounting() -> None:
+    assert cache_rotation_replicas(4_000_000, 256_000_000, 1024) == 64
+    assert cache_rotated_resident_bytes(4_000_000, 256_000_000, 1024) == 256_000_000
+    assert cache_rotation_replicas(400_000_000, 256_000_000, 1024) == 1
