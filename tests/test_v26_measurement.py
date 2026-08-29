@@ -95,3 +95,17 @@ def test_preflight_design_warning_catches_operation_confounding(tmp_path: Path) 
 
     warnings = _design_warnings([task("performance", "sum"), task("efficiency", "max")])
     assert any("confounding" in item and "CPU core classes" in item for item in warnings)
+
+
+def test_thesis_preflight_and_cache_rotation_controls_validate() -> None:
+    cfg = MeasurementConfig(
+        timing_repetitions="auto",
+        cache_rotation_target_bytes=256 * 1024 * 1024,
+        cache_rotation_max_replicas=64,
+        strict_preflight=True,
+        max_preflight_cpu_load_percent=5.0,
+        allow_gpu_graphics_processes=False,
+    )
+    assert cfg.cache_rotation_target_bytes == 256 * 1024 * 1024
+    assert cfg.cache_rotation_max_replicas == 64
+    assert cfg.strict_preflight is True
