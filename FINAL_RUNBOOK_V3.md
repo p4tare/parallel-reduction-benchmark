@@ -30,7 +30,21 @@ prbench plan --config configs/FINAL_VALIDATION_v3.yaml > plan_validation_v3.json
 prbench preflight --config configs/FINAL_VALIDATION_v3.yaml > preflight_validation_v3.json
 ```
 
-## 3. Full-stack correctness
+## 3. Targeted CUDA smoke after device-resident changes
+
+Before the full matrix, verify the CUB residency diagnostic independently:
+
+```bash
+prbench plan --config configs/SMOKE_DEVICE_RESIDENT_v3.yaml
+prbench preflight --config configs/SMOKE_DEVICE_RESIDENT_v3.yaml
+prbench run --config configs/SMOKE_DEVICE_RESIDENT_v3.yaml 2>&1 | tee smoke_device_resident_v3.log
+```
+
+Warunek przejścia: wszystkie taski `ok`. The run summary is also emitted to stdout,
+but `2>&1 | tee` remains the preferred archival form because it preserves build/runtime
+diagnostics from both streams.
+
+## 4. Full-stack correctness
 
 ```bash
 prbench run --config configs/FINAL_VALIDATION_v3.yaml | tee validation_v3.log
@@ -51,7 +65,7 @@ implementacja przekracza tolerancję, nie wolno jej arbitralnie poluzować po ob
 finalnych wyników; należy najpierw poprawić/uzasadnić kontrakt walidacji, ponownie wykonać
 ten gate i dopiero potem przejść dalej.
 
-## 4. Niezależny tuning
+## 6. Niezależny tuning
 
 Tuning nie jest materiałem confirmatory.
 
@@ -71,7 +85,7 @@ najlepszego punktu. Zamroź:
 
 Zmień tylko te pola w dwóch `FINAL_RESEARCH_*.yaml`, zacommituj i oznacz tagiem.
 
-## 5. Code/config freeze
+## 7. Code/config freeze
 
 Przykład:
 
@@ -85,7 +99,7 @@ git push origin HEAD --tags
 
 Strict preflight odmówi finalnego runu przy brudnym drzewie Git.
 
-## 6. Diagnostyka transferu i rezydencji
+## 8. Diagnostyka transferu i rezydencji
 
 Przed właściwym rankingiem warto wykonać kontrolowany eksperyment wyjaśniający koszt PCIe:
 
@@ -99,7 +113,7 @@ Porównanie `cpu_omp_simd`, `gpu_cub`, `gpu_cub_async` i
 `gpu_cub_device_resident` nie jest wspólnym rankingiem — ostatni wariant ma inną
 semantykę wejścia. Służy do rozdzielenia kosztu obliczeń GPU od kosztu dostarczenia danych.
 
-## 7. Finalny ranking algorytmów
+## 9. Finalny ranking algorytmów
 
 ```bash
 prbench plan --config configs/FINAL_RESEARCH_ALGORITHMS_v3.yaml > plan_algorithms_v3.json
@@ -107,7 +121,7 @@ prbench preflight --config configs/FINAL_RESEARCH_ALGORITHMS_v3.yaml > preflight
 prbench run --config configs/FINAL_RESEARCH_ALGORITHMS_v3.yaml | tee research_algorithms_v3.log
 ```
 
-## 8. Skalowanie i duże dane
+## 10. Skalowanie i duże dane
 
 ```bash
 prbench plan --config configs/FINAL_RESEARCH_SCALING_v3.yaml > plan_scaling_v3.json
@@ -115,7 +129,7 @@ prbench preflight --config configs/FINAL_RESEARCH_SCALING_v3.yaml > preflight_sc
 prbench run --config configs/FINAL_RESEARCH_SCALING_v3.yaml | tee research_scaling_v3.log
 ```
 
-## 9. Kryteria akceptacji finalnego runu
+## 11. Kryteria akceptacji finalnego runu
 
 - wszystkie taski `ok`;
 - zero wyników `invalid`;
