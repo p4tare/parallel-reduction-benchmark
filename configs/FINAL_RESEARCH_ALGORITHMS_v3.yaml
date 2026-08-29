@@ -63,9 +63,11 @@ system_baselines:
   stream_timeout_s: 180
 
 experiments:
-  - id: final_algorithm_comparison
+  # Strong CPU/reference implementations use interleaved host pages when several NUMA
+  # nodes participate in the selected CPU pool.
+  - id: final_cpu_comparison
     operations: [sum, min, max]
-    datasets:
+    datasets: &final_core_datasets
       # Same size grid for every dtype. int32 range is deliberately bounded so native
       # int32 accumulation cannot overflow even in the optional 1e9 extension.
       - {size: 100000, dtype: int32, distribution: integers, seed: 40101, low: -1, high: 1}
@@ -96,18 +98,45 @@ experiments:
       - {size: 100000000, dtype: float64, distribution: uniform, seed: 40401, low: -1.0, high: 1.0,
          quantization: {mode: binary_fraction, bits: 16}}
 
+
     algorithms:
       - {id: cpu_seq}
       - {id: cpu_omp}
       - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: all
+      # Candidate policy; change once from independent FINAL_TUNING_v3 if all_threads wins.
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
 
+  # Single-GPU paths use default first-touch placement. Because the GPU-only worker control
+  # thread is pinned to a topology-local CPU, this places the source allocation near GPU 0
+  # on NUMA machines instead of deliberately interleaving it over remote sockets.
+  - id: final_single_gpu_comparison
+    operations: [sum, min, max]
+    datasets: *final_core_datasets
+    algorithms:
       - {id: gpu_global_atomic, params: {block_size: 128}}
       - {id: gpu_shared_naive, params: {block_size: 256}}
       - {id: gpu_warp_atomic, params: {block_size: 256}}
       - {id: gpu_two_pass, params: {block_size: 128}}
       - {id: gpu_cub}
       - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunk_elements: 16777216}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
 
+  # Hybrid paths share the host dataset between CPU and GPU, therefore interleaving is the
+  # controlled default on multi-NUMA machines; topology/placement remains recorded.
+  - id: final_hybrid_comparison
+    operations: [sum, min, max]
+    datasets: *final_core_datasets
+    algorithms:
       - {id: hybrid_static_equal}
       - {id: hybrid_static_profiled}
       - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunk_elements: 16777216}}
@@ -116,10 +145,8 @@ experiments:
       - {id: hybrid_dynamic_adaptive,
          params: {min_chunk_size: 65536, max_chunk_size: 16777216,
                   target_chunk_ms: 2.0, ema_alpha: 0.5}}
-
     hardware:
       cpu_core_class: all
-      # Candidate policy; change once from independent FINAL_TUNING_v3 if all_threads wins.
       cpu_thread_policy: one_thread_per_core
       gpu_sets: [0]
       gpu_control_mode: dedicated
