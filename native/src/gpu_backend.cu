@@ -443,6 +443,9 @@ private:
         if (cfg_.transfer_policy == TransferPolicy::AsyncPipeline) {
             return reduce_pipeline<T, Op>(host_data, count);
         }
+        if (cfg_.transfer_policy == TransferPolicy::DeviceResident) {
+            return reduce_device_resident<T, Op>(host_data, count);
+        }
         return reduce_sync<T, Op>(host_data, count);
     }
 
@@ -541,6 +544,60 @@ private:
     }
 
     template <typename T, ReductionOperation Op>
+    PartialResult reduce_device_resident(const T* host_data, std::size_t count) {
+        CUDA_CHECK(cudaSetDevice(cfg_.device_id));
+        auto* d_input = static_cast<T*>(d_inputs_[0]);
+        auto* d_output = static_cast<T*>(d_outputs_[0]);
+
+        if (!device_resident_loaded_) {
+            CUDA_CHECK(cudaMemcpy(
+                d_input,
+                host_data,
+                count * sizeof(T),
+                cudaMemcpyHostToDevice
+            ));
+            device_resident_loaded_ = true;
+        }
+
+        DeviceMetrics metrics;
+        metrics.device_id = cfg_.device_id;
+        metrics.elements = count;
+        const auto host_start = host_clock::now();
+
+        EventPair kernel;
+        EventPair d2h;
+        kernel.record_start(streams_[0]);
+        CUDA_CHECK(cub_reduce<T, Op>(
+            d_temp_[0],
+            d_temp_bytes_[0],
+            d_input,
+            d_output,
+            count,
+            streams_[0]
+        ));
+        kernel.record_stop(streams_[0]);
+
+        T result{};
+        d2h.record_start(streams_[0]);
+        CUDA_CHECK(cudaMemcpyAsync(
+            &result,
+            d_output,
+            sizeof(T),
+            cudaMemcpyDeviceToHost,
+            streams_[0]
+        ));
+        d2h.record_stop(streams_[0]);
+        CUDA_CHECK(cudaStreamSynchronize(streams_[0]));
+
+        const auto host_end = host_clock::now();
+        metrics.kernel_us = kernel.elapsed_us();
+        metrics.d2h_us = d2h.elapsed_us();
+        metrics.total_us = std::chrono::duration<double, std::micro>(host_end - host_start).count();
+        metrics.chunks = 1;
+        return PartialResult{make_value(result), metrics};
+    }
+
+    template <typename T, ReductionOperation Op>
     PartialResult reduce_pipeline(const T* host_data, std::size_t count) {
         CUDA_CHECK(cudaSetDevice(cfg_.device_id));
         const std::size_t chunk_size = pipeline_chunk_capacity_;
@@ -619,6 +676,7 @@ private:
     std::size_t pipeline_chunk_capacity_{1};
     std::size_t pipeline_max_chunks_{1};
     std::vector<std::unique_ptr<EventPair>> pipeline_events_;
+    bool device_resident_loaded_{false};
 };
 
 }  // namespace
