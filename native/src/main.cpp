@@ -265,7 +265,13 @@ int main(int argc, char** argv) {
             return 0;
         }
 
-        prbench::Dataset dataset(cfg.dataset_path, cfg.count, cfg.dtype);
+        prbench::Dataset dataset(
+            cfg.dataset_path,
+            cfg.count,
+            cfg.dtype,
+            cfg.cache_rotation_target_bytes,
+            cfg.cache_rotation_max_replicas
+        );
         const auto create_start = std::chrono::steady_clock::now();
         auto strategy = prbench::make_strategy(cfg, dataset);
         const auto create_end = std::chrono::steady_clock::now();
