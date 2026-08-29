@@ -59,7 +59,7 @@ system_baselines:
 
 experiments:
   # Every individual GPU is characterized before multi-GPU scaling is interpreted.
-  - id: final_individual_device_scaling
+  - id: final_cpu_large_baseline
     operations: [sum, min, max]
     datasets: &large_datasets
       - {size: 10000000, dtype: int32, distribution: integers, seed: 41101, low: -1, high: 1}
@@ -83,8 +83,20 @@ experiments:
          quantization: {mode: binary_fraction, bits: 16}}
       - {size: 1000000000, dtype: float64, distribution: uniform, seed: 41401, low: -1.0, high: 1.0,
          quantization: {mode: binary_fraction, bits: 16}}
+
     algorithms:
       - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  - id: final_individual_gpu_scaling
+    operations: [sum, min, max]
+    datasets: *large_datasets
+    algorithms:
       - {id: gpu_cub}
       - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunk_elements: 16777216}}
     hardware:
@@ -92,7 +104,7 @@ experiments:
       cpu_thread_policy: one_thread_per_core
       gpu_sets: [each]
       gpu_control_mode: dedicated
-      memory_policy: interleave
+      memory_policy: default
 
   # Pure-GPU scaling establishes whether adding GPUs helps before CPU participation.
   - id: final_multi_gpu_cub_scaling
