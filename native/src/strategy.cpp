@@ -206,6 +206,7 @@ public:
         gc.block_size = cfg_.block_size;
         gc.pipeline_streams = cfg_.pipeline_streams;
         gc.pipeline_chunks = cfg_.pipeline_chunks;
+        gc.pipeline_chunk_elements = cfg_.pipeline_chunk_elements;
         gpu_ = make_gpu_reducer(gc);
     }
 
@@ -310,6 +311,7 @@ private:
             gc.block_size = cfg_.block_size;
             gc.pipeline_streams = cfg_.pipeline_streams;
             gc.pipeline_chunks = cfg_.pipeline_chunks;
+        gc.pipeline_chunk_elements = cfg_.pipeline_chunk_elements;
             auto gpu = make_gpu_reducer(gc);
             std::vector<std::pair<std::size_t, double>> samples;
             for (auto n : sizes) {
@@ -355,6 +357,7 @@ private:
             gc.block_size = cfg_.block_size;
             gc.pipeline_streams = cfg_.pipeline_streams;
             gc.pipeline_chunks = cfg_.pipeline_chunks;
+        gc.pipeline_chunk_elements = cfg_.pipeline_chunk_elements;
             gpus_.push_back(make_gpu_reducer(gc));
         }
     }
@@ -481,6 +484,7 @@ private:
             gc.block_size = cfg_.block_size;
             gc.pipeline_streams = cfg_.pipeline_streams;
             gc.pipeline_chunks = cfg_.pipeline_chunks;
+        gc.pipeline_chunk_elements = cfg_.pipeline_chunk_elements;
             auto gpu = make_gpu_reducer(gc);
             std::vector<std::pair<std::size_t, double>> samples;
             for (auto n : sizes) {
@@ -526,6 +530,7 @@ private:
             gc.block_size = cfg_.block_size;
             gc.pipeline_streams = cfg_.pipeline_streams;
             gc.pipeline_chunks = cfg_.pipeline_chunks;
+        gc.pipeline_chunk_elements = cfg_.pipeline_chunk_elements;
             gpus_.push_back(make_gpu_reducer(gc));
         }
     }
