@@ -295,11 +295,26 @@ public:
         sm_count_ = std::max(1, prop.multiProcessorCount);
         element_size_ = data_type_size(cfg_.dtype);
 
-        if (cfg_.transfer_policy == TransferPolicy::AsyncPipeline && cfg_.backend != GpuBackendKind::Cub) {
-            throw std::invalid_argument("async_pipeline is currently supported only with the CUB GPU backend");
+        if ((cfg_.transfer_policy == TransferPolicy::AsyncPipeline ||
+             cfg_.transfer_policy == TransferPolicy::DeviceResident) &&
+            cfg_.backend != GpuBackendKind::Cub) {
+            throw std::invalid_argument(
+                "async_pipeline and device_resident are currently supported only with the CUB GPU backend"
+            );
         }
-        if (cfg_.transfer_policy == TransferPolicy::Sync) setup_sync();
-        else setup_pipeline();
+
+        switch (cfg_.transfer_policy) {
+            case TransferPolicy::Sync:
+            case TransferPolicy::DeviceResident:
+                // Device-resident execution needs one full-size device input, one CUB
+                // output/temp allocation and the pinned scalar output used by reduce_device_resident().
+                // It must NOT use setup_pipeline(), whose host allocations are chunk staging buffers.
+                setup_sync();
+                break;
+            case TransferPolicy::AsyncPipeline:
+                setup_pipeline();
+                break;
+        }
     }
 
     ~CudaGpuReducer() override {
