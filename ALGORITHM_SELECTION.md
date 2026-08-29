@@ -171,3 +171,14 @@ Na serwerach z co najmniej dwoma GPU katalog zawiera również dwa kontrolowane 
 17. `gpu_multi_cub_profiled` — CUB na wszystkich wybranych GPU z podziałem wyznaczonym z osobnego modelu kosztu każdego GPU.
 
 Dzięki nim na maszynie 2×GPU można porównać bezpośrednio `GPU0+GPU1` z `CPU+GPU0+GPU1`, zamiast porównywać hybrydę wyłącznie z pojedynczą kartą. Nie należy łączyć tych baseline'ów z algorytmami P2P/NVLink: końcowe skalary są scalane na hoście, dzięki czemu badany jest przede wszystkim podział pracy i przepustowość urządzeń, a nie specyficzna topologia peer-to-peer.
+
+
+## Diagnostyka rezydencji danych (v3.0)
+
+`gpu_cub_device_resident` nie jest osiemnastym algorytmem głównego rankingu.
+Jego semantyka jest celowo inna: wejście jest kopiowane do VRAM podczas warm-upu,
+a mierzone powtórzenia obejmują redukcję urządzeniową i zwrot końcowego skalara.
+Wariant służy do oszacowania górnej granicy korzyści GPU, gdy transfer wejścia został
+zamortyzowany przez wcześniejsze etapy pipeline'u. Należy go raportować obok
+`gpu_cub` i `gpu_cub_async` jako diagnostykę przyczyny, a nie jako bezpośredniego
+konkurenta host-resident CPU/GPU E2E.
