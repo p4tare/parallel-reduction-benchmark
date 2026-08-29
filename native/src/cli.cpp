@@ -67,6 +67,7 @@ WorkerConfig parse_cli(int argc, char** argv) {
         else if (arg == "--ema-alpha") cfg.ema_alpha = std::stod(require_value(i, argc, argv, arg));
         else if (arg == "--pipeline-streams") cfg.pipeline_streams = std::stoi(require_value(i, argc, argv, arg));
         else if (arg == "--pipeline-chunks") cfg.pipeline_chunks = std::stoi(require_value(i, argc, argv, arg));
+        else if (arg == "--pipeline-chunk-elements") cfg.pipeline_chunk_elements = std::stoull(require_value(i, argc, argv, arg));
         else throw std::invalid_argument("unknown argument: " + arg);
     }
 
