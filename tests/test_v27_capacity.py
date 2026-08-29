@@ -16,10 +16,10 @@ def topology() -> SystemTopologyModel:
     return SystemTopologyModel(
         hostname="x", os="Linux", kernel="x", machine="x86_64",
         logical_cpus=[
-            TopologyCpu(cpu_id=0, socket_id=0, core_id=0, numa_node=0),
-            TopologyCpu(cpu_id=1, socket_id=0, core_id=1, numa_node=0),
+            TopologyCpu(cpu_id=i, socket_id=0, core_id=i, numa_node=0)
+            for i in range(8)
         ],
-        allowed_cpus=[0, 1], numa_nodes={0: [0, 1]},
+        allowed_cpus=list(range(8)), numa_nodes={0: list(range(8))},
         gpus=[
             TopologyGpu(index=0, name="g0", uuid="0", pci_bus_id="0000:01:00.0", memory_bytes=16<<30, memory_free_bytes=15<<30),
             TopologyGpu(index=1, name="g1", uuid="1", pci_bus_id="0000:02:00.0", memory_bytes=16<<30, memory_free_bytes=15<<30),
