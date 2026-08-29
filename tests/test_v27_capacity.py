@@ -109,6 +109,7 @@ def test_final_v3_configs_validate_and_plan_on_two_gpus() -> None:
     names = [
         "FINAL_VALIDATION_v3.yaml",
         "FINAL_NUMERICAL_VALIDATION_v3.yaml",
+        "FINAL_TRANSFER_DIAGNOSTICS_v3.yaml",
         "FINAL_TUNING_v3.yaml",
         "FINAL_RESEARCH_ALGORITHMS_v3.yaml",
         "FINAL_RESEARCH_SCALING_v3.yaml",
