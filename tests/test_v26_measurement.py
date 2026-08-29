@@ -128,3 +128,12 @@ def test_cpu_temperature_snapshot_ignores_non_cpu_groups(monkeypatch) -> None:
     snap = _cpu_temperature_snapshot()
     assert snap["max_c"] == 55.0
     assert snap["available"] is True
+
+
+def test_results_store_exposes_problem_rows(tmp_path: Path) -> None:
+    store = ResultsStore(tmp_path)
+    store.append_task({"status": "ok", "algorithm_id": "cpu_omp_simd"})
+    store.append_task({"status": "failed", "algorithm_id": "gpu_cub", "error": "boom"})
+    store.append_task({"status": "invalid", "algorithm_id": "gpu_two_pass"})
+    problems = store.task_problem_rows()
+    assert [row["status"] for row in problems] == ["failed", "invalid"]
