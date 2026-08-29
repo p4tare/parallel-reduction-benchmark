@@ -26,7 +26,7 @@ enum class SchedulerKind {
     DynamicGuided,
     DynamicAdaptive
 };
-enum class TransferPolicy { Sync, AsyncPipeline };
+enum class TransferPolicy { Sync, AsyncPipeline, DeviceResident };
 
 inline DataType parse_data_type(const std::string& s) {
     if (s == "int32") return DataType::Int32;
@@ -78,6 +78,7 @@ inline SchedulerKind parse_scheduler(const std::string& s) {
 inline TransferPolicy parse_transfer_policy(const std::string& s) {
     if (s == "sync") return TransferPolicy::Sync;
     if (s == "async_pipeline") return TransferPolicy::AsyncPipeline;
+    if (s == "device_resident") return TransferPolicy::DeviceResident;
     throw std::invalid_argument("unsupported transfer policy: " + s);
 }
 
