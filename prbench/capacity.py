@@ -49,7 +49,12 @@ def gpu_input_allocation_estimates(task: Any) -> dict[int, dict[str, Any]]:
     transfer = str(task.algorithm.transfer_policy or "sync")
 
     if scheduler == "gpu_only":
-        elements = n
+        if transfer == "async_pipeline":
+            streams = _param(task, "pipeline_streams", 4)
+            chunks = _param(task, "pipeline_chunks", 16)
+            elements = math.ceil(n / chunks) * streams
+        else:
+            elements = n
         return {gpu: {"input_bytes": elements * item, "kind": "exact", "elements": elements} for gpu in task.gpu_ids}
 
     if scheduler == "gpu_static_equal":
