@@ -469,6 +469,7 @@ class ExperimentRunner:
             "ema_alpha": 0.25,
             "pipeline_streams": 4,
             "pipeline_chunks": 16,
+            "pipeline_chunk_elements": 0,
             **task.algorithm_params,
         }
         cmd = [
@@ -498,6 +499,7 @@ class ExperimentRunner:
             "--ema-alpha", str(params["ema_alpha"]),
             "--pipeline-streams", str(params["pipeline_streams"]),
             "--pipeline-chunks", str(params["pipeline_chunks"]),
+            "--pipeline-chunk-elements", str(params["pipeline_chunk_elements"]),
         ]
         if task.memory_policy == "interleave" and shutil.which("numactl") and self.topology.numa_nodes:
             nodes = ",".join(map(str, sorted(self.topology.numa_nodes)))
