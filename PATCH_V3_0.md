@@ -26,6 +26,13 @@ Każde przekroczenie tolerancji walidatora oznacza task `invalid`, również dla
 floating-point SUM. Tolerancja SUM nadal uwzględnia dtype, N i skalę/cancellation danych,
 ale wynik poza kontraktem numerycznym nie może konkurować w rankingu wydajności.
 
+### GPU transfer/residency diagnostics
+
+Dodano diagnostyczny `gpu_cub_device_resident`: wejście jest ładowane do VRAM w warm-up,
+a mierzone iteracje pokazują koszt redukcji bez ponownego H2D. Nie należy go umieszczać
+w host-resident rankingu; służy do pokazania, kiedy GPU może wygrywać po zamortyzowaniu
+transferu.
+
 ### GPU-only async CUB
 
 Dodano `gpu_cub_async`: CUB DeviceReduce z pinned host staging i wieloma CUDA streams.
