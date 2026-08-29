@@ -110,7 +110,7 @@ experiments:
       - {id: gpu_shared_naive, params: {block_size: [128, 256, 512]}}
       - {id: gpu_warp_atomic, params: {block_size: [128, 256, 512]}}
       - {id: gpu_two_pass, params: {block_size: [128, 256, 512]}}
-      - {id: gpu_cub_async, params: {pipeline_streams: [2, 4], pipeline_chunks: [8, 16, 32]}}
+      - {id: gpu_cub_async, params: {pipeline_streams: [2, 4], pipeline_chunk_elements: [1048576, 4194304, 16777216]}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -131,7 +131,7 @@ experiments:
       - {size: 100000000, dtype: int64, distribution: integers, seed: 31302, low: -1000000, high: 1000000}
     algorithms:
       - {id: hybrid_static_profiled_async,
-         params: {pipeline_streams: [2, 4], pipeline_chunks: [8, 16, 32]}}
+         params: {pipeline_streams: [2, 4], pipeline_chunk_elements: [1048576, 4194304, 16777216]}}
       - {id: hybrid_dynamic_fixed,
          params: {chunk_size: [262144, 1048576, 4194304, 16777216]}}
       - {id: hybrid_dynamic_guided,
