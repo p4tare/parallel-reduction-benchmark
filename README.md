@@ -59,6 +59,7 @@ The v3 scientific comparison contains fifteen CPU, single-GPU and CPU+GPU strate
 
 - `cpu_seq`, `cpu_omp`, `cpu_omp_simd`;
 - `gpu_global_atomic`, `gpu_shared_naive`, `gpu_warp_atomic`, `gpu_two_pass`, `gpu_cub`, `gpu_cub_async`;
+- diagnostic-only: `gpu_cub_device_resident` (input already in VRAM; excluded from the main host-resident ranking);
 - `hybrid_static_equal`, `hybrid_static_profiled`, `hybrid_static_profiled_async`;
 - `hybrid_dynamic_fixed`, `hybrid_dynamic_guided`, `hybrid_dynamic_adaptive`;
 - `gpu_multi_cub_equal`, `gpu_multi_cub_profiled` (2+ GPU only).
@@ -129,6 +130,8 @@ prbench run --config configs/FINAL_TUNING_v3.yaml
 # freeze selected tunables in Git before confirmatory runs
 prbench run --config configs/FINAL_RESEARCH_ALGORITHMS_v3.yaml
 prbench run --config configs/FINAL_RESEARCH_SCALING_v3.yaml
+# explanatory transfer/residency diagnostic
+prbench run --config configs/FINAL_TRANSFER_DIAGNOSTICS_v3.yaml
 ```
 
 See `FINAL_RUNBOOK_V3.md` and `RESEARCH_PROTOCOL.md`.
