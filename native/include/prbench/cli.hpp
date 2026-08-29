@@ -24,6 +24,8 @@ struct WorkerConfig {
     int cpu_threads{1};
     int warmup_runs{5};
     int calibration_repetitions{5};
+    std::size_t cache_rotation_target_bytes{268435456};
+    std::size_t cache_rotation_max_replicas{64};
     int block_size{256};
     std::size_t chunk_size{1u << 20};
     std::size_t min_chunk_size{1u << 16};
