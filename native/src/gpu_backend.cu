@@ -591,7 +591,7 @@ private:
         const auto host_end = host_clock::now();
 
         T result = reduction_identity<T, Op>();
-        for (int c = 0; c < used_chunks; ++c) {
+        for (std::size_t c = 0; c < used_chunks; ++c) {
             result = reduction_combine<T, Op>(result, host_results[c]);
             metrics.h2d_us += pipeline_events_[c * 3]->elapsed_us();
             metrics.kernel_us += pipeline_events_[c * 3 + 1]->elapsed_us();
