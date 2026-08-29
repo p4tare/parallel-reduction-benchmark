@@ -235,7 +235,9 @@ public:
     }
 
     IterationMetrics run_once() override {
-        dataset_.advance_replica();
+        if (cfg_.transfer_policy != TransferPolicy::DeviceResident) {
+            dataset_.advance_replica();
+        }
         const auto begin = clock_type::now();
         auto partial = gpu_->reduce(dataset_.data(), dataset_.count());
         const auto end = clock_type::now();
