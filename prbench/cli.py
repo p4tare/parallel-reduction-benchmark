@@ -317,6 +317,19 @@ def _evaluate_preflight(config, topology, tasks) -> dict[str, object]:
         fatal.append("CPU energy is enabled but no readable package-level RAPL counter was found")
     if config.energy.enable_gpu and gpu_ids and not topology.nvml_available:
         fatal.append("GPU energy is enabled but NVML is unavailable")
+    gpu_energy_diagnostics = NvmlEnergyMeter.diagnostics(gpu_ids) if config.energy.enable_gpu else []
+    if config.measurement.strict_preflight and config.energy.enable_gpu and gpu_ids:
+        diagnostics_by_gpu = {int(item.get("gpu_id", -1)): item for item in gpu_energy_diagnostics}
+        for gpu_id in gpu_ids:
+            item = diagnostics_by_gpu.get(gpu_id, {})
+            if not (
+                bool(item.get("total_energy_counter_supported"))
+                or bool(item.get("power_usage_supported"))
+            ):
+                fatal.append(
+                    f"GPU {gpu_id} has neither a readable total-energy counter nor readable power telemetry; "
+                    "strict thesis energy measurement cannot proceed"
+                )
 
     gpu_compute_processes, gpu_graphics_processes = _gpu_processes(gpu_ids)
     busy = {gpu: pids for gpu, pids in gpu_compute_processes.items() if pids}
@@ -467,7 +480,7 @@ def _evaluate_preflight(config, topology, tasks) -> dict[str, object]:
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "gpu_compute_processes": gpu_compute_processes,
         "gpu_graphics_processes": gpu_graphics_processes,
-        "gpu_energy_diagnostics": NvmlEnergyMeter.diagnostics(gpu_ids) if config.energy.enable_gpu else [],
+        "gpu_energy_diagnostics": gpu_energy_diagnostics,
         "gpu_memory_capacity": gpu_memory_rows,
         "multi_gpu_sets": [list(x) for x in multi_sets],
         "rapl_available": bool(rapl and rapl.available),
