@@ -38,6 +38,19 @@ prbench run --config configs/FINAL_VALIDATION_v3.yaml | tee validation_v3.log
 
 Warunek przejścia: zero `failed` i zero `invalid`.
 
+Następnie obowiązkowo sprawdź kontrakt numeryczny dla dużych SUM:
+
+```bash
+prbench plan --config configs/FINAL_NUMERICAL_VALIDATION_v3.yaml > plan_numerical_v3.json
+prbench preflight --config configs/FINAL_NUMERICAL_VALIDATION_v3.yaml > preflight_numerical_v3.json
+prbench run --config configs/FINAL_NUMERICAL_VALIDATION_v3.yaml | tee numerical_validation_v3.log
+```
+
+Również tutaj warunek przejścia to zero `failed` i zero `invalid`. Jeśli poprawna
+implementacja przekracza tolerancję, nie wolno jej arbitralnie poluzować po obejrzeniu
+finalnych wyników; należy najpierw poprawić/uzasadnić kontrakt walidacji, ponownie wykonać
+ten gate i dopiero potem przejść dalej.
+
 ## 4. Niezależny tuning
 
 Tuning nie jest materiałem confirmatory.
