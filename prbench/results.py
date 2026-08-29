@@ -77,6 +77,13 @@ class ResultsStore:
             counts[status] = counts.get(status, 0) + 1
         return counts
 
+    def task_problem_rows(self) -> list[dict[str, Any]]:
+        return [
+            row
+            for row in self._read_jsonl(self.task_path)
+            if row.get("status") in {"failed", "invalid"}
+        ]
+
     @staticmethod
     def _numeric_values(rows: Iterable[dict[str, Any]], field: str) -> list[float]:
         values: list[float] = []
