@@ -174,6 +174,7 @@ public:
     }
 
     IterationMetrics run_once() override {
+        dataset_.advance_replica();
         const auto begin = clock_type::now();
         auto cpu = reduce_cpu(dataset_.data(), dataset_.count(), dataset_.dtype(), cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation);
         const auto end = clock_type::now();
@@ -248,6 +249,7 @@ public:
     }
 
     IterationMetrics run_once() override {
+        dataset_.advance_replica();
         const auto e2e_start = clock_type::now();
         std::vector<PartialResult> gpu_results(cfg_.gpu_ids.size());
         std::vector<std::exception_ptr> errors(cfg_.gpu_ids.size());
@@ -310,10 +312,12 @@ private:
             auto gpu = make_gpu_reducer(gc);
             std::vector<std::pair<std::size_t, double>> samples;
             for (auto n : sizes) {
+                dataset_.advance_replica();
                 (void)gpu->reduce(dataset_.data(), n);
                 std::vector<double> times;
                 times.reserve(static_cast<std::size_t>(cfg_.calibration_repetitions));
                 for (int rep = 0; rep < cfg_.calibration_repetitions; ++rep) {
+                    dataset_.advance_replica();
                     auto sample = gpu->reduce(dataset_.data(), n);
                     times.push_back(sample.device.total_us);
                 }
@@ -439,10 +443,12 @@ private:
         std::vector<LinearModel> models;
         std::vector<std::pair<std::size_t, double>> cpu_samples;
         for (auto n : sizes) {
+            dataset_.advance_replica();
             (void)reduce_cpu(dataset_.data(), n, dataset_.dtype(), cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation);
             std::vector<double> times;
             times.reserve(static_cast<std::size_t>(cfg_.calibration_repetitions));
             for (int rep = 0; rep < cfg_.calibration_repetitions; ++rep) {
+                dataset_.advance_replica();
                 auto sample = reduce_cpu(dataset_.data(), n, dataset_.dtype(), cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation);
                 times.push_back(sample.compute_us);
             }
@@ -476,10 +482,12 @@ private:
             auto gpu = make_gpu_reducer(gc);
             std::vector<std::pair<std::size_t, double>> samples;
             for (auto n : sizes) {
+                dataset_.advance_replica();
                 (void)gpu->reduce(dataset_.data(), n);
                 std::vector<double> times;
                 times.reserve(static_cast<std::size_t>(cfg_.calibration_repetitions));
                 for (int rep = 0; rep < cfg_.calibration_repetitions; ++rep) {
+                    dataset_.advance_replica();
                     auto sample = gpu->reduce(dataset_.data(), n);
                     times.push_back(sample.device.total_us);
                 }
@@ -566,6 +574,7 @@ public:
     }
 
     IterationMetrics run_once() override {
+        dataset_.advance_replica();
         next_.store(0, std::memory_order_relaxed);
         scheduler_accum_us_.store(0.0, std::memory_order_relaxed);
         const auto e2e_start = clock_type::now();
@@ -661,10 +670,12 @@ private:
     void initialize_throughput(std::size_t sample_n) {
         if (sample_n == 0) throw std::logic_error("adaptive scheduler requires a positive calibration sample");
         throughput_.assign(1 + cfg_.gpu_ids.size(), 1.0);
+        dataset_.advance_replica();
         (void)reduce_cpu(dataset_.data(), sample_n, dataset_.dtype(), cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation);
         std::vector<double> cpu_times;
         cpu_times.reserve(static_cast<std::size_t>(cfg_.calibration_repetitions));
         for (int rep = 0; rep < cfg_.calibration_repetitions; ++rep) {
+            dataset_.advance_replica();
             auto cpu = reduce_cpu(dataset_.data(), sample_n, dataset_.dtype(), cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation);
             cpu_times.push_back(cpu.compute_us);
         }
@@ -676,10 +687,12 @@ private:
             if (i < cfg_.gpu_worker_cpus.size()) {
                 affinity = std::make_unique<ScopedThreadAffinity>(cfg_.gpu_worker_cpus[i]);
             }
+            dataset_.advance_replica();
             (void)gpus_[i]->reduce(dataset_.data(), sample_n);
             std::vector<double> gpu_times;
             gpu_times.reserve(static_cast<std::size_t>(cfg_.calibration_repetitions));
             for (int rep = 0; rep < cfg_.calibration_repetitions; ++rep) {
+                dataset_.advance_replica();
                 auto gpu = gpus_[i]->reduce(dataset_.data(), sample_n);
                 gpu_times.push_back(gpu.device.total_us);
             }
