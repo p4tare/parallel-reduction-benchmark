@@ -85,7 +85,21 @@ git push origin HEAD --tags
 
 Strict preflight odmówi finalnego runu przy brudnym drzewie Git.
 
-## 6. Finalny ranking algorytmów
+## 6. Diagnostyka transferu i rezydencji
+
+Przed właściwym rankingiem warto wykonać kontrolowany eksperyment wyjaśniający koszt PCIe:
+
+```bash
+prbench plan --config configs/FINAL_TRANSFER_DIAGNOSTICS_v3.yaml > plan_transfer_v3.json
+prbench preflight --config configs/FINAL_TRANSFER_DIAGNOSTICS_v3.yaml > preflight_transfer_v3.json
+prbench run --config configs/FINAL_TRANSFER_DIAGNOSTICS_v3.yaml | tee transfer_diagnostics_v3.log
+```
+
+Porównanie `cpu_omp_simd`, `gpu_cub`, `gpu_cub_async` i
+`gpu_cub_device_resident` nie jest wspólnym rankingiem — ostatni wariant ma inną
+semantykę wejścia. Służy do rozdzielenia kosztu obliczeń GPU od kosztu dostarczenia danych.
+
+## 7. Finalny ranking algorytmów
 
 ```bash
 prbench plan --config configs/FINAL_RESEARCH_ALGORITHMS_v3.yaml > plan_algorithms_v3.json
@@ -93,7 +107,7 @@ prbench preflight --config configs/FINAL_RESEARCH_ALGORITHMS_v3.yaml > preflight
 prbench run --config configs/FINAL_RESEARCH_ALGORITHMS_v3.yaml | tee research_algorithms_v3.log
 ```
 
-## 7. Skalowanie i duże dane
+## 8. Skalowanie i duże dane
 
 ```bash
 prbench plan --config configs/FINAL_RESEARCH_SCALING_v3.yaml > plan_scaling_v3.json
@@ -101,7 +115,7 @@ prbench preflight --config configs/FINAL_RESEARCH_SCALING_v3.yaml > preflight_sc
 prbench run --config configs/FINAL_RESEARCH_SCALING_v3.yaml | tee research_scaling_v3.log
 ```
 
-## 8. Kryteria akceptacji finalnego runu
+## 9. Kryteria akceptacji finalnego runu
 
 - wszystkie taski `ok`;
 - zero wyników `invalid`;
