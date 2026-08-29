@@ -324,14 +324,30 @@ def _evaluate_preflight(config, topology, tasks) -> dict[str, object]:
         fatal.append(f"other GPU compute processes are present: {busy}; use exclusive GPUs/node")
     graphics_busy = {gpu: pids for gpu, pids in gpu_graphics_processes.items() if pids}
     if graphics_busy:
-        warnings.append(
+        message = (
             f"GPU graphics processes are present: {graphics_busy}; GPU energy includes their activity. "
             "Prefer non-display GPUs for thesis energy measurements."
         )
+        if config.measurement.strict_preflight and not config.measurement.allow_gpu_graphics_processes:
+            fatal.append(message)
+        else:
+            warnings.append(message)
 
     cpu_load = psutil.cpu_percent(interval=0.5)
-    if cpu_load > 10.0:
-        warnings.append(f"system-wide CPU utilization is already {cpu_load:.1f}% before the run")
+    if cpu_load > config.measurement.max_preflight_cpu_load_percent:
+        message = (
+            f"system-wide CPU utilization is already {cpu_load:.1f}% before the run "
+            f"(limit {config.measurement.max_preflight_cpu_load_percent:.1f}%)"
+        )
+        if config.measurement.strict_preflight:
+            fatal.append(message)
+        else:
+            warnings.append(message)
+
+    if config.measurement.strict_preflight:
+        dirty = command_output(["git", "status", "--porcelain"], cwd=_project_root())
+        if dirty:
+            fatal.append("strict_preflight requires a clean Git working tree; commit/stash local changes first")
 
     classes: dict[str, list[int]] = {}
     for cpu in topology.logical_cpus:
@@ -350,23 +366,33 @@ def _evaluate_preflight(config, topology, tasks) -> dict[str, object]:
         if key in dataset_checks:
             continue
         size = dataset_size_bytes(task.dataset)
+        target = int(config.measurement.cache_rotation_target_bytes)
+        if target > 0 and size > 0:
+            desired_replicas = (target + size - 1) // size
+            replicas = max(1, min(config.measurement.cache_rotation_max_replicas, desired_replicas))
+        else:
+            replicas = 1
+        resident = size * replicas
         item = {
             "dataset_size": task.dataset.size,
             "dtype": task.dataset.dtype.value,
             "size_bytes": size,
+            "cache_rotation_replicas": replicas,
+            "estimated_worker_resident_bytes": resident,
             "configured_ram_limit_bytes": ram_limit,
             "available_ram_bytes_at_preflight": available_ram,
         }
         dataset_checks[key] = item
-        if size > ram_limit:
+        if resident > ram_limit:
             fatal.append(
-                f"dataset {task.dataset.size}x{task.dataset.dtype.value} requires {size} bytes, exceeding "
-                f"max_dataset_ram_fraction budget {ram_limit} bytes"
+                f"dataset {task.dataset.size}x{task.dataset.dtype.value} requires about {resident} resident bytes "
+                f"with cache rotation ({replicas} replicas), exceeding max_dataset_ram_fraction budget "
+                f"{ram_limit} bytes"
             )
-        elif size > int(available_ram * 0.85):
+        elif resident > int(available_ram * 0.85):
             warnings.append(
-                f"dataset {task.dataset.size}x{task.dataset.dtype.value} consumes >85% of currently available RAM; "
-                "page cache/worker/CUDA allocations may cause memory pressure"
+                f"cache-rotated dataset {task.dataset.size}x{task.dataset.dtype.value} consumes >85% of currently "
+                "available RAM; page cache/worker/CUDA allocations may cause memory pressure"
             )
 
     # Device-memory feasibility. Exact estimates can fail-fast; model-based/reference
