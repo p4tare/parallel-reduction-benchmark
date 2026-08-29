@@ -1,0 +1,102 @@
+# FINAL v3 transfer-path diagnostic. NOT part of the main algorithm ranking.
+# Purpose: quantify where GPU time goes and under which residency assumptions GPU reduction
+# can beat the host-resident CPU path.
+output_dir: results
+dataset_cache_dir: .prbench/datasets
+
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: "on"
+  jobs: null
+  cxx_compiler: null
+  cuda_host_compiler: null
+
+measurement:
+  warmup_runs: 5
+  scheduler_calibration_repetitions: 3
+  timing_repetitions: auto
+  timing_probe_repetitions: 10
+  timing_target_batch_seconds: 0.50
+  timing_min_repetitions: 30
+  timing_max_repetitions: 5000
+  cache_rotation_target_bytes: 268435456
+  cache_rotation_max_replicas: 1024
+  energy_batch_repetitions: auto
+  energy_target_batch_seconds: 3.0
+  energy_min_repetitions: 10
+  energy_max_repetitions: 100000
+  blocks: 5
+  randomization_seed: 20260903
+  max_dataset_ram_fraction: 0.60
+  gpu_memory_safety_fraction: 0.80
+  thermal_safety_gpu_c: 85
+  thermal_safety_cpu_c: 95
+  thermal_wait_timeout_s: 300
+  worker_event_timeout_s: 3600
+  strict_preflight: true
+  max_preflight_cpu_load_percent: 5.0
+  allow_gpu_graphics_processes: false
+
+energy:
+  enable_cpu: true
+  enable_gpu: true
+  gpu_power_fallback_poll_ms: 50
+
+telemetry:
+  enabled: true
+  capture_cpu_frequency: true
+  capture_cpu_temperature: true
+  capture_gpu_state: true
+  capture_pre_post_timing: true
+  capture_pre_post_energy: true
+
+system_baselines:
+  capture_memory_inventory: true
+  stream_executable: null
+  stream_args: []
+  stream_timeout_s: 180
+
+experiments:
+  - id: transfer_path_float32
+    operations: [sum]
+    datasets:
+      - {size: 1000000, dtype: float32, distribution: uniform, seed: 42101, low: -1.0, high: 1.0,
+         quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 10000000, dtype: float32, distribution: uniform, seed: 42101, low: -1.0, high: 1.0,
+         quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 100000000, dtype: float32, distribution: uniform, seed: 42101, low: -1.0, high: 1.0,
+         quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 1000000000, dtype: float32, distribution: uniform, seed: 42101, low: -1.0, high: 1.0,
+         quantization: {mode: binary_fraction, bits: 8}}
+    algorithms:
+      - {id: cpu_omp_simd}
+      - {id: gpu_cub}
+      - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunk_elements: 16777216}}
+      - {id: gpu_cub_device_resident}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: default
+
+  - id: transfer_path_int64
+    operations: [sum]
+    datasets:
+      - {size: 1000000, dtype: int64, distribution: integers, seed: 42201, low: -1000000, high: 1000000}
+      - {size: 10000000, dtype: int64, distribution: integers, seed: 42201, low: -1000000, high: 1000000}
+      - {size: 100000000, dtype: int64, distribution: integers, seed: 42201, low: -1000000, high: 1000000}
+      - {size: 1000000000, dtype: int64, distribution: integers, seed: 42201, low: -1000000, high: 1000000}
+    algorithms:
+      - {id: cpu_omp_simd}
+      - {id: gpu_cub}
+      - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunk_elements: 16777216}}
+      - {id: gpu_cub_device_resident}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: default
