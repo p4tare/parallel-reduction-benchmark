@@ -35,6 +35,7 @@ struct WorkerConfig {
     double ema_alpha{0.25};
     int pipeline_streams{4};
     int pipeline_chunks{16};
+    std::size_t pipeline_chunk_elements{0};
     bool self_test{false};
     bool build_info{false};
     bool probe_cpu_types{false};
