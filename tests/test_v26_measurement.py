@@ -112,14 +112,18 @@ def test_thesis_preflight_and_cache_rotation_controls_validate() -> None:
 
 
 def test_cpu_temperature_snapshot_ignores_non_cpu_groups(monkeypatch) -> None:
+    from types import SimpleNamespace
+
     import psutil
     from prbench.telemetry import _cpu_temperature_snapshot
 
-    temp = psutil._common.shwtemp
+    temp = lambda label, current, high, critical: SimpleNamespace(
+        label=label, current=current, high=high, critical=critical
+    )
     monkeypatch.setattr(psutil, "sensors_temperatures", lambda: {
-        "coretemp": [temp(label="Package id 0", current=55.0, high=85.0, critical=95.0)],
-        "eno2": [temp(label="PHY Temperature", current=75.0, high=None, critical=None)],
-        "nvme": [temp(label="Composite", current=65.0, high=80.0, critical=90.0)],
+        "coretemp": [temp("Package id 0", 55.0, 85.0, 95.0)],
+        "eno2": [temp("PHY Temperature", 75.0, None, None)],
+        "nvme": [temp("Composite", 65.0, 80.0, 90.0)],
     })
     snap = _cpu_temperature_snapshot()
     assert snap["max_c"] == 55.0
