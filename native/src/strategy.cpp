@@ -218,10 +218,18 @@ public:
             // ordinary warm-ups, so first-use vs resident steady-state can be reported.
             dataset_.advance_replica();
             const auto start = clock_type::now();
-            (void)gpu_->reduce(dataset_.data(), dataset_.count());
+            const auto first = gpu_->reduce(dataset_.data(), dataset_.count());
             const auto end = clock_type::now();
             const double elapsed =
                 std::chrono::duration<double, std::micro>(end - start).count();
+            prepare_metrics_.calibration_samples.push_back({
+                "gpu_device_resident_upload",
+                0,
+                cfg_.gpu_ids.front(),
+                dataset_.count(),
+                first.device.h2d_us,
+                dataset_.count() / std::max(1e-12, first.device.h2d_us * 1e-6),
+            });
             prepare_metrics_.calibration_samples.push_back({
                 "gpu_device_resident_first_use",
                 0,
