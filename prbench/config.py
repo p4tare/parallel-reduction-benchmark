@@ -83,7 +83,7 @@ class ConfigurationLoader:
             number = as_int()
             if number < 32 or number > 1024 or (number & (number - 1)) != 0:
                 raise ValueError(f"{algorithm_id}.block_size must be a power of two in [32, 1024]")
-        elif name in {"chunk_size", "min_chunk_size", "max_chunk_size"}:
+        elif name in {"chunk_size", "min_chunk_size", "max_chunk_size", "pipeline_chunk_elements"}:
             if as_int() <= 0:
                 raise ValueError(f"{algorithm_id}.{name} must be positive")
         elif name in {"pipeline_streams", "pipeline_chunks"}:
