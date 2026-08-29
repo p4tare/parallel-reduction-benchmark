@@ -188,6 +188,23 @@ def cmd_run(args: argparse.Namespace) -> int:
     final_status = "completed_with_errors" if counts.get("failed", 0) or counts.get("invalid", 0) else "completed"
     results.finalize_manifest(status=final_status)
     print(f"Task status counts: {json.dumps(counts, sort_keys=True)}", flush=True)
+    if counts.get("failed", 0) or counts.get("invalid", 0):
+        problems = results.task_problem_rows()
+        print(f"Problem task summary ({len(problems)}):", flush=True)
+        for row in problems:
+            detail = row.get("error")
+            if not detail and row.get("status") == "invalid":
+                detail = (
+                    f"numerical mismatch count={row.get('numerical_mismatch_count', 'unknown')}"
+                )
+            print(
+                "  "
+                f"status={row.get('status')} algorithm={row.get('algorithm_id')} "
+                f"op={row.get('operation')} N={row.get('dataset_size')} "
+                f"dtype={row.get('dtype')} GPUs={row.get('gpu_ids')} "
+                f"task={row.get('task_instance_id')} reason={detail or 'unspecified'}",
+                flush=True,
+            )
     print(f"Finished. Results: {results.run_dir}", flush=True)
     if counts.get("failed", 0) or counts.get("invalid", 0):
         print("One or more task instances failed or produced invalid results.", file=sys.stderr)
