@@ -212,6 +212,25 @@ public:
 
     void prepare(int warmup_runs) override {
         prepare_metrics_.partition = {{"gpu", 0, cfg_.gpu_ids.front(), 0, dataset_.count()}};
+        if (cfg_.transfer_policy == TransferPolicy::DeviceResident) {
+            // Explicit first-use sample: includes one-time H2D residency establishment
+            // plus one reduction. Steady-state TIMING begins only after this sample and
+            // ordinary warm-ups, so first-use vs resident steady-state can be reported.
+            dataset_.advance_replica();
+            const auto start = clock_type::now();
+            (void)gpu_->reduce(dataset_.data(), dataset_.count());
+            const auto end = clock_type::now();
+            const double elapsed =
+                std::chrono::duration<double, std::micro>(end - start).count();
+            prepare_metrics_.calibration_samples.push_back({
+                "gpu_device_resident_first_use",
+                0,
+                cfg_.gpu_ids.front(),
+                dataset_.count(),
+                elapsed,
+                dataset_.count() / std::max(1e-12, elapsed * 1e-6),
+            });
+        }
         run_warmups(warmup_runs);
     }
 
