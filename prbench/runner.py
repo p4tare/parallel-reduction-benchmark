@@ -396,6 +396,8 @@ class ExperimentRunner:
                         "warmup_median_us": ready.payload.get("warmup_median_us"),
                         "strategy_create_us": ready.payload.get("strategy_create_us"),
                         "prepare_us": ready.payload.get("prepare_us"),
+                        "dataset_replica_count": ready.payload.get("dataset_replica_count"),
+                        "dataset_resident_bytes": ready.payload.get("dataset_resident_bytes"),
                         "prepare_metrics": ready.payload.get("prepare_metrics", {}),
                         "timing_batch_wall_us": timing_done.payload.get("batch_wall_us"),
                         "energy_batch_wall_us": measured.payload.get("batch_wall_us") if measured else None,
@@ -485,6 +487,8 @@ class ExperimentRunner:
             "--cpu-threads", str(max(1, len(task.cpu_affinity))),
             "--warmup-runs", str(self.config.measurement.warmup_runs),
             "--calibration-repetitions", str(self.config.measurement.scheduler_calibration_repetitions),
+            "--cache-rotation-target-bytes", str(self.config.measurement.cache_rotation_target_bytes),
+            "--cache-rotation-max-replicas", str(self.config.measurement.cache_rotation_max_replicas),
             "--block-size", str(params["block_size"]),
             "--chunk-size", str(params["chunk_size"]),
             "--min-chunk-size", str(params["min_chunk_size"]),
@@ -500,12 +504,22 @@ class ExperimentRunner:
             return ["numactl", f"--interleave={nodes}", *cmd]
         return cmd
 
+    def _dataset_resident_bytes(self, dataset_bytes: int) -> int:
+        m = self.config.measurement
+        if dataset_bytes <= 0 or m.cache_rotation_target_bytes <= 0:
+            return dataset_bytes
+        desired = math.ceil(m.cache_rotation_target_bytes / dataset_bytes)
+        replicas = max(1, min(m.cache_rotation_max_replicas, desired))
+        return dataset_bytes * replicas
+
     def _validate_dataset_spec_memory_budget(self, spec) -> None:
-        size = dataset_size_bytes(spec)
-        fraction = size / max(1, self.topology.total_ram_bytes)
+        dataset_bytes = dataset_size_bytes(spec)
+        resident = self._dataset_resident_bytes(dataset_bytes)
+        fraction = resident / max(1, self.topology.total_ram_bytes)
         if fraction > self.config.measurement.max_dataset_ram_fraction:
             raise MemoryError(
-                f"dataset would use {fraction:.1%} of RAM before generation, exceeding configured limit "
+                f"cache-rotated worker dataset would use {fraction:.1%} of RAM "
+                f"({resident} bytes resident from {dataset_bytes} source bytes), exceeding configured limit "
                 f"{self.config.measurement.max_dataset_ram_fraction:.1%}"
             )
 
@@ -520,10 +534,13 @@ class ExperimentRunner:
                 )
 
     def _validate_memory_budget(self, dataset: DatasetArtifact) -> None:
-        fraction = dataset.metadata["size_bytes"] / max(1, self.topology.total_ram_bytes)
+        source_bytes = int(dataset.metadata["size_bytes"])
+        resident = self._dataset_resident_bytes(source_bytes)
+        fraction = resident / max(1, self.topology.total_ram_bytes)
         if fraction > self.config.measurement.max_dataset_ram_fraction:
             raise MemoryError(
-                f"dataset uses {fraction:.1%} of RAM, exceeding configured limit "
+                f"cache-rotated worker dataset uses {fraction:.1%} of RAM "
+                f"({resident} bytes resident from {source_bytes} source bytes), exceeding configured limit "
                 f"{self.config.measurement.max_dataset_ram_fraction:.1%}"
             )
 
