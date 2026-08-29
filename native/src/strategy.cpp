@@ -215,6 +215,7 @@ public:
     }
 
     IterationMetrics run_once() override {
+        dataset_.advance_replica();
         const auto begin = clock_type::now();
         auto partial = gpu_->reduce(dataset_.data(), dataset_.count());
         const auto end = clock_type::now();
@@ -385,6 +386,7 @@ public:
     }
 
     IterationMetrics run_once() override {
+        dataset_.advance_replica();
         const auto e2e_start = clock_type::now();
         std::vector<PartialResult> gpu_results(cfg_.gpu_ids.size());
         std::vector<std::exception_ptr> errors(cfg_.gpu_ids.size());
