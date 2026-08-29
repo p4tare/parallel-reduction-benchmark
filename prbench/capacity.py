@@ -26,6 +26,17 @@ def dataset_size_bytes(dataset: Any) -> int:
     return int(dataset.size) * dtype_size_bytes(dataset.dtype)
 
 
+def cache_rotation_replicas(dataset_bytes: int, target_bytes: int, max_replicas: int) -> int:
+    if dataset_bytes <= 0 or target_bytes <= 0:
+        return 1
+    desired = math.ceil(target_bytes / dataset_bytes)
+    return max(1, min(max_replicas, desired))
+
+
+def cache_rotated_resident_bytes(dataset_bytes: int, target_bytes: int, max_replicas: int) -> int:
+    return dataset_bytes * cache_rotation_replicas(dataset_bytes, target_bytes, max_replicas)
+
+
 def _param(task: Any, name: str, default: int) -> int:
     value = task.algorithm_params.get(name, default)
     return int(value)
