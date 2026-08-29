@@ -14,7 +14,7 @@ from .build import BuildError, CMakeBuilder
 from .catalog import AlgorithmCatalog
 from .config import ConfigurationLoader
 from .datasets import DatasetFactory
-from .capacity import dataset_size_bytes, gpu_capacity_rows
+from .capacity import cache_rotation_replicas, dataset_size_bytes, gpu_capacity_rows
 from .energy import NvmlEnergyMeter, RaplEnergyMeter
 from .manifest import create_manifest
 from .results import ResultsStore
@@ -380,11 +380,9 @@ def _evaluate_preflight(config, topology, tasks) -> dict[str, object]:
             continue
         size = dataset_size_bytes(task.dataset)
         target = int(config.measurement.cache_rotation_target_bytes)
-        if target > 0 and size > 0:
-            desired_replicas = (target + size - 1) // size
-            replicas = max(1, min(config.measurement.cache_rotation_max_replicas, desired_replicas))
-        else:
-            replicas = 1
+        replicas = cache_rotation_replicas(
+            size, target, config.measurement.cache_rotation_max_replicas
+        )
         resident = size * replicas
         item = {
             "dataset_size": task.dataset.size,
