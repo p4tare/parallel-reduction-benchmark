@@ -76,6 +76,7 @@ experiments:
       - {id: gpu_two_pass, params: {block_size: 128}}
       - {id: gpu_cub}
       - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunk_elements: 16777216}}
+      - {id: gpu_cub_device_resident}
       - {id: gpu_multi_cub_equal}
       - {id: gpu_multi_cub_profiled}
       - {id: hybrid_static_equal}
@@ -107,6 +108,7 @@ experiments:
       - {id: cpu_omp_simd}
       - {id: gpu_cub}
       - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunk_elements: 16777216}}
+      - {id: gpu_cub_device_resident}
       - {id: gpu_multi_cub_equal}
       - {id: gpu_multi_cub_profiled}
       - {id: hybrid_static_equal}
