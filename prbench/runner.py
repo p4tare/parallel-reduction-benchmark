@@ -58,7 +58,14 @@ class ThermalGuard:
             temps = psutil.sensors_temperatures()
         except Exception:
             return None
-        values = [entry.current for entries in temps.values() for entry in entries if entry.current]
+        cpu_groups = {"coretemp", "k10temp", "zenpower", "cpu_thermal", "acpitz"}
+        values = [
+            float(entry.current)
+            for group, entries in temps.items()
+            if group.lower() in cpu_groups
+            for entry in entries
+            if entry.current is not None
+        ]
         return max(values) if values else None
 
     @staticmethod
