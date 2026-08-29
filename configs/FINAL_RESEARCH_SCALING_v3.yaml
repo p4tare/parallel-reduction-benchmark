@@ -86,7 +86,7 @@ experiments:
     algorithms:
       - {id: cpu_omp_simd}
       - {id: gpu_cub}
-      - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
+      - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunk_elements: 16777216}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -116,7 +116,7 @@ experiments:
     algorithms:
       - {id: hybrid_static_equal}
       - {id: hybrid_static_profiled}
-      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunk_elements: 16777216}}
       - {id: hybrid_dynamic_adaptive,
          params: {min_chunk_size: 65536, max_chunk_size: 16777216,
                   target_chunk_ms: 2.0, ema_alpha: 0.5}}
