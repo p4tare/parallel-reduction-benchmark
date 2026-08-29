@@ -76,29 +76,34 @@ def _cpu_frequency_snapshot(cpu_ids: list[int]) -> dict[str, Any]:
 
 def _cpu_temperature_snapshot() -> dict[str, Any]:
     sensors: list[dict[str, Any]] = []
-    values: list[float] = []
+    cpu_values: list[float] = []
+    cpu_groups = {"coretemp", "k10temp", "zenpower", "cpu_thermal", "acpitz"}
     try:
         raw = psutil.sensors_temperatures()
     except Exception as exc:  # pragma: no cover - platform dependent
         return {"available": False, "error": f"{type(exc).__name__}: {exc}", "sensors": []}
     for group, entries in raw.items():
+        group_is_cpu = group.lower() in cpu_groups
         for entry in entries:
             if entry.current is None:
                 continue
             current = float(entry.current)
-            values.append(current)
+            if group_is_cpu:
+                cpu_values.append(current)
             sensors.append(
                 {
                     "group": group,
                     "label": entry.label or None,
                     "current_c": current,
+                    "is_cpu_sensor": group_is_cpu,
                     "high_c": float(entry.high) if entry.high is not None else None,
                     "critical_c": float(entry.critical) if entry.critical is not None else None,
                 }
             )
     return {
-        "available": bool(sensors),
-        "max_c": max(values) if values else None,
+        "available": bool(cpu_values),
+        "max_c": max(cpu_values) if cpu_values else None,
+        "sensor_scope": "cpu_groups_only",
         "sensors": sensors,
     }
 
