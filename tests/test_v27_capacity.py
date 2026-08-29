@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from prbench.capacity import (
     cache_rotation_replicas,
     cache_rotated_resident_bytes,
@@ -5,6 +7,7 @@ from prbench.capacity import (
     gpu_capacity_rows,
 )
 from prbench.catalog import AlgorithmCatalog
+from prbench.config import ConfigurationLoader
 from prbench.models import DType, DatasetSpec, ExperimentGroup, HardwareConfig, RootConfig, SystemTopologyModel, TopologyCpu, TopologyGpu
 from prbench.sweep import SweepPlanner
 
@@ -97,3 +100,19 @@ def test_gpu_only_async_fixed_chunk_capacity_is_bounded() -> None:
     rows = gpu_capacity_rows(task, topology(), 0.8)
     assert rows[0]["estimated_input_bytes"] == 268_435_456
     assert rows[0]["estimate_kind"] == "exact"
+
+
+def test_final_v3_configs_validate_and_plan_on_two_gpus() -> None:
+    root = Path(__file__).resolve().parents[1]
+    loader = ConfigurationLoader(AlgorithmCatalog())
+    planner = SweepPlanner(AlgorithmCatalog(), topology())
+    names = [
+        "FINAL_VALIDATION_v3.yaml",
+        "FINAL_TUNING_v3.yaml",
+        "FINAL_RESEARCH_ALGORITHMS_v3.yaml",
+        "FINAL_RESEARCH_SCALING_v3.yaml",
+    ]
+    for name in names:
+        cfg = loader.load(root / "configs" / name)
+        tasks = planner.plan(cfg)
+        assert tasks, name
