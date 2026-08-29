@@ -150,9 +150,12 @@ class ExperimentRunner:
             )
             return
 
-    def _validate_runtime_idleness(self, task: TaskSpec) -> None:
+    def _validate_runtime_idleness(
+        self, task: TaskSpec, allowed_gpu_pids: set[int] | None = None
+    ) -> None:
         if not self.config.measurement.strict_preflight:
             return
+        allowed_gpu_pids = allowed_gpu_pids or set()
 
         load = psutil.cpu_percent(interval=0.25)
         limit = self.config.measurement.max_preflight_cpu_load_percent
@@ -169,7 +172,11 @@ class ExperimentRunner:
                 handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_id)
                 compute = []
                 try:
-                    compute = [int(p.pid) for p in pynvml.nvmlDeviceGetComputeRunningProcesses(handle)]
+                    compute = [
+                        int(p.pid)
+                        for p in pynvml.nvmlDeviceGetComputeRunningProcesses(handle)
+                        if int(p.pid) not in allowed_gpu_pids
+                    ]
                 except Exception:
                     pass
                 if compute:
@@ -182,7 +189,11 @@ class ExperimentRunner:
                     graphics = []
                     if graphics_fn is not None:
                         try:
-                            graphics = [int(p.pid) for p in graphics_fn(handle)]
+                            graphics = [
+                                int(p.pid)
+                                for p in graphics_fn(handle)
+                                if int(p.pid) not in allowed_gpu_pids
+                            ]
                         except Exception:
                             pass
                     if graphics:
@@ -257,6 +268,11 @@ class ExperimentRunner:
                     + (f" (probe_mean={timing_probe_mean_us:.3f} us)" if timing_probe_mean_us is not None else ""),
                     flush=True,
                 )
+                # Dataset replica materialization, CUDA setup, scheduler calibration and
+                # warm-up happen before READY/PROBE. Re-apply safety/idleness gates here
+                # so those excluded setup phases cannot silently determine TIMING start state.
+                self.thermal.wait_until_safe(task.gpu_ids)
+                self._validate_runtime_idleness(task, {process.pid})
                 if self.config.telemetry.capture_pre_post_timing:
                     self._capture_telemetry(task, sequence_index, "pre_timing")
                 timing_timestamp_start = utc_now_iso()
@@ -306,6 +322,8 @@ class ExperimentRunner:
                     energy_started = False
                     energy_stopped = False
                     try:
+                        self.thermal.wait_until_safe(task.gpu_ids)
+                        self._validate_runtime_idleness(task, {process.pid})
                         if self.config.telemetry.capture_pre_post_energy:
                             self._capture_telemetry(task, sequence_index, "pre_energy")
                         energy_timestamp_start = utc_now_iso()
