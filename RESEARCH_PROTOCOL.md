@@ -97,6 +97,24 @@ Finalne wyniki nie powinny pochodzić z tej pełnej siatki. Po pilocie wybrane w
 3. Przed analizą porównać `block_summary.csv` oraz `telemetry.jsonl` w funkcji `sequence_index`. Widoczny drift temperatury/zegarów/P-state należy opisać lub powtórzyć kampanię po stabilizacji środowiska.
 4. Dla schedulerów hybrydowych raportować zarówno E2E, jak i `cpu_elements`, `gpu_elements_total` oraz work fractions. Bez tego nie należy interpretować różnic jako efektu load balancingu.
 5. Dla profiled/adaptive archiwizować `prepare_metrics`; są częścią definicji algorytmu w danym runie.
-6. Floating-point SUM analizować dwutorowo: wydajność + jakość numeryczna. Przekroczenie tolerancji jest wynikiem numerycznym, jeśli infrastruktura wykonała algorytm poprawnie.
+6. Floating-point SUM analizować dwutorowo: wydajność + jakość numeryczna. W v3 tolerancja walidatora uwzględnia dtype, N i cancellation; jej przekroczenie oznacza task `invalid` i wyklucza wynik z rankingu wydajności.
 7. Jeżeli badanym czynnikiem jest P/E/all albo dedicated/shared, pozostałe czynniki muszą być symetryczne. Ostrzeżenia preflight są pomocą, a nie substytutem projektu eksperymentu.
 8. Dla porównań memory-bound zapisać albo wiarygodną inwentaryzację RAM, albo wynik STREAM (preferowane oba, jeśli polityka serwera na to pozwala).
+
+
+## v3.0 — finalny protokół
+
+Dla finalnych badań obowiązuje kolejność:
+`FINAL_VALIDATION_v3.yaml` → `FINAL_TUNING_v3.yaml` → commit/tag zamrożonych
+parametrów → `FINAL_RESEARCH_ALGORITHMS_v3.yaml` → `FINAL_RESEARCH_SCALING_v3.yaml`.
+
+`strict_preflight: true` jest obowiązkowe dla confirmatory runs. Program ponownie
+sprawdza idleness przed każdym taskiem. Małe/średnie datasety są rotowane między
+identycznymi replikami host RAM; kopie powstają przed pomiarem, a ich liczba i całkowity
+resident working set są zapisane w danych. Scheduler calibration używa tej samej polityki,
+więc model CPU/GPU nie jest trenowany na stale gorącym prefiksie.
+
+Dla pojedynczego GPU finalne konfiguracje używają NUMA-local first-touch
+(`memory_policy: default` przy lokalnie przypiętym control thread). CPU i hybrydy
+używają `interleave` jako kontrolowanej polityki dla wspólnego host datasetu na
+maszynach multi-NUMA. Szczegółowa procedura: `FINAL_RUNBOOK_V3.md`.
