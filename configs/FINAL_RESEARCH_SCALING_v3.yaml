@@ -1,0 +1,128 @@
+# FINAL v3 confirmatory scaling campaign: large host-resident datasets and 1/2/3 GPUs.
+# Thesis result data. Run after FINAL_RESEARCH_ALGORITHMS_v3 parameters are frozen.
+output_dir: results
+dataset_cache_dir: .prbench/datasets
+
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: "on"
+  jobs: null
+  cxx_compiler: null
+  cuda_host_compiler: null
+
+measurement:
+  warmup_runs: 5
+  scheduler_calibration_repetitions: 5
+  timing_repetitions: auto
+  timing_probe_repetitions: 10
+  timing_target_batch_seconds: 0.75
+  timing_min_repetitions: 20
+  timing_max_repetitions: 1000
+  cache_rotation_target_bytes: 268435456
+  cache_rotation_max_replicas: 1024
+  energy_batch_repetitions: auto
+  energy_target_batch_seconds: 3.0
+  energy_min_repetitions: 8
+  energy_max_repetitions: 100000
+  blocks: 7
+  randomization_seed: 20260902
+  max_dataset_ram_fraction: 0.60
+  gpu_memory_safety_fraction: 0.80
+  thermal_safety_gpu_c: 85
+  thermal_safety_cpu_c: 95
+  thermal_wait_timeout_s: 300
+  worker_event_timeout_s: 3600
+  strict_preflight: true
+  max_preflight_cpu_load_percent: 5.0
+  allow_gpu_graphics_processes: false
+
+energy:
+  enable_cpu: true
+  enable_gpu: true
+  gpu_power_fallback_poll_ms: 50
+
+telemetry:
+  enabled: true
+  capture_cpu_frequency: true
+  capture_cpu_temperature: true
+  capture_gpu_state: true
+  capture_pre_post_timing: true
+  capture_pre_post_energy: true
+
+system_baselines:
+  capture_memory_inventory: true
+  stream_executable: null
+  stream_args: []
+  stream_timeout_s: 180
+
+experiments:
+  # Every individual GPU is characterized before multi-GPU scaling is interpreted.
+  - id: final_individual_device_scaling
+    operations: [sum, min, max]
+    datasets: &large_datasets
+      - {size: 10000000, dtype: int32, distribution: integers, seed: 41101, low: -1, high: 1}
+      - {size: 100000000, dtype: int32, distribution: integers, seed: 41101, low: -1, high: 1}
+      - {size: 1000000000, dtype: int32, distribution: integers, seed: 41101, low: -1, high: 1}
+
+      - {size: 10000000, dtype: int64, distribution: integers, seed: 41201, low: -1000000, high: 1000000}
+      - {size: 100000000, dtype: int64, distribution: integers, seed: 41201, low: -1000000, high: 1000000}
+      - {size: 1000000000, dtype: int64, distribution: integers, seed: 41201, low: -1000000, high: 1000000}
+
+      - {size: 10000000, dtype: float32, distribution: uniform, seed: 41301, low: -1.0, high: 1.0,
+         quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 100000000, dtype: float32, distribution: uniform, seed: 41301, low: -1.0, high: 1.0,
+         quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 1000000000, dtype: float32, distribution: uniform, seed: 41301, low: -1.0, high: 1.0,
+         quantization: {mode: binary_fraction, bits: 8}}
+
+      - {size: 10000000, dtype: float64, distribution: uniform, seed: 41401, low: -1.0, high: 1.0,
+         quantization: {mode: binary_fraction, bits: 16}}
+      - {size: 100000000, dtype: float64, distribution: uniform, seed: 41401, low: -1.0, high: 1.0,
+         quantization: {mode: binary_fraction, bits: 16}}
+      - {size: 1000000000, dtype: float64, distribution: uniform, seed: 41401, low: -1.0, high: 1.0,
+         quantization: {mode: binary_fraction, bits: 16}}
+    algorithms:
+      - {id: cpu_omp_simd}
+      - {id: gpu_cub}
+      - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  # Pure-GPU scaling establishes whether adding GPUs helps before CPU participation.
+  - id: final_multi_gpu_cub_scaling
+    operations: [sum, min, max]
+    datasets: *large_datasets
+    algorithms:
+      - {id: gpu_multi_cub_equal}
+      - {id: gpu_multi_cub_profiled}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [pairs, all]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  # Hybrid scaling keeps the transparent equal baseline, model-based static scheduler,
+  # transfer-overlap variant, and the most expressive dynamic/adaptive scheduler.
+  - id: final_hybrid_scaling
+    operations: [sum, min, max]
+    datasets: *large_datasets
+    algorithms:
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_profiled}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
+      - {id: hybrid_dynamic_adaptive,
+         params: {min_chunk_size: 65536, max_chunk_size: 16777216,
+                  target_chunk_ms: 2.0, ema_alpha: 0.5}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each, pairs, all]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
