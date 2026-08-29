@@ -49,3 +49,20 @@ def test_cuda_visible_devices_identity_check(monkeypatch) -> None:
     assert _cuda_visible_devices_problem(t) is None
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "1,0")
     assert "masks/reorders" in (_cuda_visible_devices_problem(t) or "")
+
+
+def test_gpu_only_async_capacity_uses_staging_slots() -> None:
+    cfg = RootConfig(
+        measurement={"blocks": 1, "timing_repetitions": 3},
+        energy={"enable_cpu": False, "enable_gpu": False},
+        experiments=[ExperimentGroup(
+            id="a", datasets=[DatasetSpec(size=16_000_000, dtype=DType.float32)],
+            algorithms=[{"id": "gpu_cub_async", "params": {"pipeline_streams": 2, "pipeline_chunks": 8}}],
+            hardware=HardwareConfig(gpu_sets=["each"]),
+        )],
+    )
+    task = SweepPlanner(AlgorithmCatalog(), topology()).plan(cfg)[0]
+    rows = gpu_capacity_rows(task, topology(), 0.8)
+    # 16M / 8 chunks * 2 staging slots * 4 B = 16 MB of device input buffers.
+    assert rows[0]["estimated_input_bytes"] == 16_000_000
+    assert rows[0]["estimate_kind"] == "exact"
