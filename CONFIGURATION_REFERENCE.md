@@ -1,4 +1,4 @@
-# Pełna referencja konfiguracji v2.6
+# Pełna referencja konfiguracji v3.0
 
 Najbardziej praktycznym źródłem jest `configs/CONFIG_ALL_OPTIONS_TEMPLATE.yaml`: to poprawny YAML z komentarzami, wszystkimi wartościami kategorialnymi i przykładowymi siatkami parametrów.
 
@@ -20,7 +20,9 @@ Parametry auto TIMING:
 - `timing_probe_repetitions`: 3..1000;
 - `timing_target_batch_seconds`: >0.01 .. 30;
 - `timing_min_repetitions`: >=3;
-- `timing_max_repetitions`: >=min, <=1,000,000.
+- `timing_max_repetitions`: >=min, <=1,000,000;
+- `cache_rotation_target_bytes`: docelowy łączny working set identycznych replik host datasetu; 0 wyłącza rotację;
+- `cache_rotation_max_replicas`: 1..1024, limit liczby replik.
 
 ENERGY:
 - `energy_batch_repetitions`: `auto` lub stały int w zakresie min/max;
@@ -36,7 +38,10 @@ Pozostałe:
 - `thermal_safety_gpu_c`: 40..110;
 - `thermal_safety_cpu_c`: 40..115;
 - `thermal_wait_timeout_s` >=0;
-- `worker_event_timeout_s`: >0 .. 86400.
+- `worker_event_timeout_s`: >0 .. 86400;
+- `strict_preflight`: bool; w finalnym runie zamienia zanieczyszczenia środowiska w błędy;
+- `max_preflight_cpu_load_percent`: 0..100;
+- `allow_gpu_graphics_processes`: bool.
 
 ## Energia
 
@@ -118,6 +123,7 @@ GPU single:
 - `gpu_warp_atomic`: `block_size`
 - `gpu_two_pass`: `block_size`
 - `gpu_cub`
+- `gpu_cub_async`: dodatnie `pipeline_streams` oraz preferowane dodatnie `pipeline_chunk_elements`; stare `pipeline_chunks` pozostaje kompatybilne
 
 `block_size`: `32, 64, 128, 256, 512, 1024`.
 
@@ -128,7 +134,7 @@ Multi-GPU:
 Hybrid static:
 - `hybrid_static_equal`
 - `hybrid_static_profiled`
-- `hybrid_static_profiled_async`: dodatnie `pipeline_streams`, `pipeline_chunks`, z `chunks >= streams`.
+- `hybrid_static_profiled_async`: dodatnie `pipeline_streams` oraz preferowane `pipeline_chunk_elements`; legacy `pipeline_chunks` nadal wspierane.
 
 Hybrid dynamic:
 - `hybrid_dynamic_fixed`: dodatni `chunk_size`;
