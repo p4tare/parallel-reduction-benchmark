@@ -110,7 +110,8 @@ class ExperimentRunner:
             dataset = self.dataset_factory.get_or_create(task.dataset)
             self._validate_memory_budget(dataset)
             self.thermal.wait_until_safe(task.gpu_ids)
-            # `pre_task` is deliberately after the thermal safety gate; `task_entry`
+            self._validate_runtime_idleness(task)
+            # `pre_task` is deliberately after the thermal/idleness safety gates; `task_entry`
             # preserves the state before any wait so cooldown/order effects remain auditable.
             self._capture_telemetry(task, sequence_index, "pre_task")
             self._run_worker(task, dataset, sequence_index, started_iso)
@@ -148,6 +149,51 @@ class ExperimentRunner:
                 flush=True,
             )
             return
+
+    def _validate_runtime_idleness(self, task: TaskSpec) -> None:
+        if not self.config.measurement.strict_preflight:
+            return
+
+        load = psutil.cpu_percent(interval=0.25)
+        limit = self.config.measurement.max_preflight_cpu_load_percent
+        if load > limit:
+            raise RuntimeError(
+                f"strict runtime idleness gate: CPU utilization {load:.1f}% exceeds {limit:.1f}%"
+            )
+
+        if pynvml is None or not task.gpu_ids:
+            return
+        try:
+            pynvml.nvmlInit()
+            for gpu_id in task.gpu_ids:
+                handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_id)
+                compute = []
+                try:
+                    compute = [int(p.pid) for p in pynvml.nvmlDeviceGetComputeRunningProcesses(handle)]
+                except Exception:
+                    pass
+                if compute:
+                    raise RuntimeError(
+                        f"strict runtime idleness gate: GPU {gpu_id} has foreign compute processes {sorted(set(compute))}"
+                    )
+
+                if not self.config.measurement.allow_gpu_graphics_processes:
+                    graphics_fn = getattr(pynvml, "nvmlDeviceGetGraphicsRunningProcesses", None)
+                    graphics = []
+                    if graphics_fn is not None:
+                        try:
+                            graphics = [int(p.pid) for p in graphics_fn(handle)]
+                        except Exception:
+                            pass
+                    if graphics:
+                        raise RuntimeError(
+                            f"strict runtime idleness gate: GPU {gpu_id} has graphics processes {sorted(set(graphics))}"
+                        )
+        finally:
+            try:
+                pynvml.nvmlShutdown()
+            except Exception:
+                pass
 
     def _run_worker(
         self,
