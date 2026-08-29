@@ -416,11 +416,11 @@ class ExperimentRunner:
 
     @staticmethod
     def _numerical_mismatch_is_fatal(task: TaskSpec) -> bool:
-        # Integer reductions and floating min/max have exact expected semantics for the
-        # generated finite datasets. Floating SUM is order-sensitive by design; a large
-        # error is preserved as a numerical-quality result rather than reclassified as
-        # an infrastructure failure.
-        return task.operation.value != "sum" or task.dataset.dtype.value in {"int32", "int64"}
+        # A tolerance breach means the implementation did not satisfy the benchmark's
+        # correctness contract. Floating-point SUM remains order-sensitive, but that is
+        # already reflected in ResultValidator's dtype/count/cancellation-aware tolerance.
+        # Invalid numerical results must never remain eligible for a performance ranking.
+        return True
 
     def _capture_telemetry(self, task: TaskSpec, sequence_index: int, phase: str) -> None:
         if not self.config.telemetry.enabled:
