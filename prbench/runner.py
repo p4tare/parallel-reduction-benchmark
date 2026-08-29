@@ -58,15 +58,24 @@ class ThermalGuard:
             temps = psutil.sensors_temperatures()
         except Exception:
             return None
-        cpu_groups = {"coretemp", "k10temp", "zenpower", "cpu_thermal", "acpitz"}
-        values = [
+        primary_groups = {"coretemp", "k10temp", "zenpower", "cpu_thermal"}
+        primary = [
             float(entry.current)
             for group, entries in temps.items()
-            if group.lower() in cpu_groups
+            if group.lower() in primary_groups
             for entry in entries
             if entry.current is not None
         ]
-        return max(values) if values else None
+        if primary:
+            return max(primary)
+        fallback = [
+            float(entry.current)
+            for group, entries in temps.items()
+            if group.lower() == "acpitz"
+            for entry in entries
+            if entry.current is not None
+        ]
+        return max(fallback) if fallback else None
 
     @staticmethod
     def _max_gpu_temp(gpu_ids: list[int]) -> float | None:
