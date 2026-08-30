@@ -60,6 +60,36 @@ double median(std::vector<double> values) {
     return 0.5 * (values[mid - 1] + values[mid]);
 }
 
+std::size_t calibration_offset(
+    std::size_t total,
+    std::size_t sample_n,
+    std::size_t sample_index
+) {
+    if (sample_n == 0 || sample_n >= total) return 0;
+    const std::size_t slots = std::max<std::size_t>(1, total / sample_n);
+    return (sample_index % slots) * sample_n;
+}
+
+template <typename SampleFn>
+double robust_calibration_median(
+    int bursts,
+    int repetitions,
+    SampleFn&& sample_fn
+) {
+    std::vector<double> burst_medians;
+    burst_medians.reserve(static_cast<std::size_t>(bursts));
+    std::size_t sample_index = 0;
+    for (int burst = 0; burst < bursts; ++burst) {
+        std::vector<double> samples;
+        samples.reserve(static_cast<std::size_t>(repetitions));
+        for (int rep = 0; rep < repetitions; ++rep) {
+            samples.push_back(sample_fn(sample_index++));
+        }
+        burst_medians.push_back(median(std::move(samples)));
+    }
+    return median(std::move(burst_medians));
+}
+
 void accumulate_device_metrics(DeviceMetrics& dst, const DeviceMetrics& src) {
     dst.device_id = src.device_id;
     dst.h2d_us += src.h2d_us;
@@ -345,15 +375,16 @@ private:
             std::vector<std::pair<std::size_t, double>> samples;
             for (auto n : sizes) {
                 dataset_.advance_replica();
-                (void)gpu->reduce(dataset_.data(), n);
-                std::vector<double> times;
-                times.reserve(static_cast<std::size_t>(cfg_.calibration_repetitions));
-                for (int rep = 0; rep < cfg_.calibration_repetitions; ++rep) {
-                    dataset_.advance_replica();
-                    auto sample = gpu->reduce(dataset_.data(), n);
-                    times.push_back(sample.device.total_us);
-                }
-                const double elapsed = median(std::move(times));
+                (void)gpu->reduce(dataset_.offset_ptr(calibration_offset(dataset_.count(), n, 0)), n);
+                const double elapsed = robust_calibration_median(
+                    cfg_.calibration_bursts,
+                    cfg_.calibration_repetitions,
+                    [&](std::size_t sample_index) {
+                        dataset_.advance_replica();
+                        const auto offset = calibration_offset(dataset_.count(), n, sample_index + 1);
+                        return gpu->reduce(dataset_.offset_ptr(offset), n).device.total_us;
+                    }
+                );
                 samples.emplace_back(n, elapsed);
                 prepare_metrics_.calibration_samples.push_back({
                     "gpu", static_cast<int>(i), cfg_.gpu_ids[i], n, elapsed,
@@ -478,15 +509,18 @@ private:
         std::vector<std::pair<std::size_t, double>> cpu_samples;
         for (auto n : sizes) {
             dataset_.advance_replica();
-            (void)reduce_cpu(dataset_.data(), n, dataset_.dtype(), cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation);
-            std::vector<double> times;
-            times.reserve(static_cast<std::size_t>(cfg_.calibration_repetitions));
-            for (int rep = 0; rep < cfg_.calibration_repetitions; ++rep) {
-                dataset_.advance_replica();
-                auto sample = reduce_cpu(dataset_.data(), n, dataset_.dtype(), cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation);
-                times.push_back(sample.compute_us);
-            }
-            const double elapsed = median(std::move(times));
+            (void)reduce_cpu(dataset_.offset_ptr(calibration_offset(dataset_.count(), n, 0)), n,
+                             dataset_.dtype(), cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation);
+            const double elapsed = robust_calibration_median(
+                cfg_.calibration_bursts,
+                cfg_.calibration_repetitions,
+                [&](std::size_t sample_index) {
+                    dataset_.advance_replica();
+                    const auto offset = calibration_offset(dataset_.count(), n, sample_index + 1);
+                    return reduce_cpu(dataset_.offset_ptr(offset), n, dataset_.dtype(),
+                                      cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation).compute_us;
+                }
+            );
             cpu_samples.emplace_back(n, elapsed);
             prepare_metrics_.calibration_samples.push_back({
                 "cpu", 0, -1, n, elapsed,
@@ -518,15 +552,16 @@ private:
             std::vector<std::pair<std::size_t, double>> samples;
             for (auto n : sizes) {
                 dataset_.advance_replica();
-                (void)gpu->reduce(dataset_.data(), n);
-                std::vector<double> times;
-                times.reserve(static_cast<std::size_t>(cfg_.calibration_repetitions));
-                for (int rep = 0; rep < cfg_.calibration_repetitions; ++rep) {
-                    dataset_.advance_replica();
-                    auto sample = gpu->reduce(dataset_.data(), n);
-                    times.push_back(sample.device.total_us);
-                }
-                const double elapsed = median(std::move(times));
+                (void)gpu->reduce(dataset_.offset_ptr(calibration_offset(dataset_.count(), n, 0)), n);
+                const double elapsed = robust_calibration_median(
+                    cfg_.calibration_bursts,
+                    cfg_.calibration_repetitions,
+                    [&](std::size_t sample_index) {
+                        dataset_.advance_replica();
+                        const auto offset = calibration_offset(dataset_.count(), n, sample_index + 1);
+                        return gpu->reduce(dataset_.offset_ptr(offset), n).device.total_us;
+                    }
+                );
                 samples.emplace_back(n, elapsed);
                 prepare_metrics_.calibration_samples.push_back({
                     "gpu", static_cast<int>(i), cfg_.gpu_ids[i], n, elapsed,
@@ -707,15 +742,18 @@ private:
         if (sample_n == 0) throw std::logic_error("adaptive scheduler requires a positive calibration sample");
         throughput_.assign(1 + cfg_.gpu_ids.size(), 1.0);
         dataset_.advance_replica();
-        (void)reduce_cpu(dataset_.data(), sample_n, dataset_.dtype(), cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation);
-        std::vector<double> cpu_times;
-        cpu_times.reserve(static_cast<std::size_t>(cfg_.calibration_repetitions));
-        for (int rep = 0; rep < cfg_.calibration_repetitions; ++rep) {
-            dataset_.advance_replica();
-            auto cpu = reduce_cpu(dataset_.data(), sample_n, dataset_.dtype(), cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation);
-            cpu_times.push_back(cpu.compute_us);
-        }
-        const double cpu_elapsed = median(std::move(cpu_times));
+        (void)reduce_cpu(dataset_.offset_ptr(calibration_offset(dataset_.count(), sample_n, 0)), sample_n,
+                         dataset_.dtype(), cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation);
+        const double cpu_elapsed = robust_calibration_median(
+            cfg_.calibration_bursts,
+            cfg_.calibration_repetitions,
+            [&](std::size_t sample_index) {
+                dataset_.advance_replica();
+                const auto offset = calibration_offset(dataset_.count(), sample_n, sample_index + 1);
+                return reduce_cpu(dataset_.offset_ptr(offset), sample_n, dataset_.dtype(),
+                                  cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation).compute_us;
+            }
+        );
         throughput_[0] = static_cast<double>(sample_n) / std::max(cpu_elapsed, 1e-6) * 1e6;
         prepare_metrics_.calibration_samples.push_back({"cpu", 0, -1, sample_n, cpu_elapsed, throughput_[0]});
         for (std::size_t i = 0; i < gpus_.size(); ++i) {
@@ -724,15 +762,16 @@ private:
                 affinity = std::make_unique<ScopedThreadAffinity>(cfg_.gpu_worker_cpus[i]);
             }
             dataset_.advance_replica();
-            (void)gpus_[i]->reduce(dataset_.data(), sample_n);
-            std::vector<double> gpu_times;
-            gpu_times.reserve(static_cast<std::size_t>(cfg_.calibration_repetitions));
-            for (int rep = 0; rep < cfg_.calibration_repetitions; ++rep) {
-                dataset_.advance_replica();
-                auto gpu = gpus_[i]->reduce(dataset_.data(), sample_n);
-                gpu_times.push_back(gpu.device.total_us);
-            }
-            const double gpu_elapsed = median(std::move(gpu_times));
+            (void)gpus_[i]->reduce(dataset_.offset_ptr(calibration_offset(dataset_.count(), sample_n, 0)), sample_n);
+            const double gpu_elapsed = robust_calibration_median(
+                cfg_.calibration_bursts,
+                cfg_.calibration_repetitions,
+                [&](std::size_t sample_index) {
+                    dataset_.advance_replica();
+                    const auto offset = calibration_offset(dataset_.count(), sample_n, sample_index + 1);
+                    return gpus_[i]->reduce(dataset_.offset_ptr(offset), sample_n).device.total_us;
+                }
+            );
             throughput_[i + 1] = static_cast<double>(sample_n) / std::max(gpu_elapsed, 1e-6) * 1e6;
             prepare_metrics_.calibration_samples.push_back({
                 "gpu", static_cast<int>(i), cfg_.gpu_ids[i], sample_n, gpu_elapsed, throughput_[i + 1]
