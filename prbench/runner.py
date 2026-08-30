@@ -97,6 +97,20 @@ class ThermalGuard:
         return max(values) if values else None
 
 
+def openmp_places_for_cpus(cpus: list[int]) -> str | None:
+    """Return an explicit OpenMP place list matching the benchmark CPU pool.
+
+    Using the generic OMP_PLACES=threads lets the runtime rediscover machine-wide
+    hardware threads independently of the benchmark's affinity selection.  For hybrid
+    runs (for example 23 compute cores + one dedicated GPU control core) that can make
+    fork/join placement depend on runtime initialization order.  An explicit place list
+    keeps OpenMP workers on exactly the CPUs recorded in TaskSpec/manifest.
+    """
+    if not cpus:
+        return None
+    return ",".join(f"{{{cpu}}}" for cpu in cpus)
+
+
 class ExperimentRunner:
     def __init__(
         self,
@@ -233,7 +247,13 @@ class ExperimentRunner:
         stderr_path = self.results.stderr_path(task.task_instance_id)
         env = os.environ.copy()
         env["OMP_PROC_BIND"] = "spread"
-        env["OMP_PLACES"] = "threads"
+        explicit_places = openmp_places_for_cpus(task.cpu_affinity)
+        if explicit_places is not None:
+            env["OMP_PLACES"] = explicit_places
+        else:
+            # GPU-only workers do not execute OpenMP reductions; keep a valid fallback
+            # for native self-tests or future CPU work without changing their CPU mask.
+            env["OMP_PLACES"] = "threads"
         task_monotonic_start = time.monotonic()
         with stderr_path.open("w", encoding="utf-8") as stderr_file:
             process = subprocess.Popen(
