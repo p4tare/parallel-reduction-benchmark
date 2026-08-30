@@ -137,3 +137,8 @@ def test_results_store_exposes_problem_rows(tmp_path: Path) -> None:
     store.append_task({"status": "invalid", "algorithm_id": "gpu_two_pass"})
     problems = store.task_problem_rows()
     assert [row["status"] for row in problems] == ["failed", "invalid"]
+
+
+def test_openmp_places_match_explicit_cpu_pool() -> None:
+    assert openmp_places_for_cpus([1, 2, 7]) == "{1},{2},{7}"
+    assert openmp_places_for_cpus([]) is None
