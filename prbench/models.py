@@ -123,9 +123,11 @@ class HardwareConfig(StrictModel):
 
 class MeasurementConfig(StrictModel):
     warmup_runs: int = Field(default=5, ge=1)
-    # Repetitions per calibration point for profiled/adaptive schedulers. The median
-    # is used; calibration remains outside the reported TIMING window.
+    # Repetitions per burst and independent bursts per calibration point for
+    # profiled/adaptive schedulers. Each burst is reduced to a median, then the
+    # median of burst-medians is used. Calibration remains outside TIMING.
     scheduler_calibration_repetitions: int = Field(default=5, ge=1, le=100)
+    scheduler_calibration_bursts: int = Field(default=3, ge=1, le=9)
     # Fixed repetition count or an automatically sized timing batch. Auto mode runs
     # a short unrecorded probe after warm-up and targets timing_target_batch_seconds.
     timing_repetitions: int | Literal["auto"] = "auto"
