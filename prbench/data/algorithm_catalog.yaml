@@ -88,6 +88,29 @@ algorithms:
     supports_multi_gpu: false
     role: library_gpu_baseline
 
+  - id: gpu_cub_async
+    label: CUB DeviceReduce + pinned asynchronous pipeline
+    scheduler: gpu_only
+    gpu_backend: cub
+    transfer_policy: async_pipeline
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    tunables: [pipeline_streams, pipeline_chunks, pipeline_chunk_elements]
+    role: optimized_gpu_transfer_overlap
+
+  - id: gpu_cub_device_resident
+    label: CUB DeviceReduce with input already resident on GPU
+    scheduler: gpu_only
+    gpu_backend: cub
+    transfer_policy: device_resident
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    role: diagnostic_device_resident_upper_bound
+
   - id: gpu_multi_cub_equal
     label: Multi-GPU CUB equal partition
     scheduler: gpu_static_equal
@@ -146,7 +169,7 @@ algorithms:
     uses_cpu: true
     uses_gpu: true
     supports_multi_gpu: true
-    tunables: [pipeline_streams, pipeline_chunks]
+    tunables: [pipeline_streams, pipeline_chunks, pipeline_chunk_elements]
     role: transfer_overlap_variant
 
   - id: hybrid_dynamic_fixed

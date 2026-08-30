@@ -11,7 +11,7 @@ from typing import Any
 
 import psutil
 
-from .capacity import dataset_size_bytes, gpu_capacity_rows
+from .capacity import cache_rotated_resident_bytes, dataset_size_bytes, gpu_capacity_rows
 from .datasets import DatasetArtifact, DatasetFactory
 from .energy import CompositeEnergyMeter
 from .models import RootConfig, SystemTopologyModel
@@ -58,8 +58,24 @@ class ThermalGuard:
             temps = psutil.sensors_temperatures()
         except Exception:
             return None
-        values = [entry.current for entries in temps.values() for entry in entries if entry.current]
-        return max(values) if values else None
+        primary_groups = {"coretemp", "k10temp", "zenpower", "cpu_thermal"}
+        primary = [
+            float(entry.current)
+            for group, entries in temps.items()
+            if group.lower() in primary_groups
+            for entry in entries
+            if entry.current is not None
+        ]
+        if primary:
+            return max(primary)
+        fallback = [
+            float(entry.current)
+            for group, entries in temps.items()
+            if group.lower() == "acpitz"
+            for entry in entries
+            if entry.current is not None
+        ]
+        return max(fallback) if fallback else None
 
     @staticmethod
     def _max_gpu_temp(gpu_ids: list[int]) -> float | None:
@@ -79,6 +95,20 @@ class ThermalGuard:
                 pass
             return None
         return max(values) if values else None
+
+
+def openmp_places_for_cpus(cpus: list[int]) -> str | None:
+    """Return an explicit OpenMP place list matching the benchmark CPU pool.
+
+    Using the generic OMP_PLACES=threads lets the runtime rediscover machine-wide
+    hardware threads independently of the benchmark's affinity selection.  For hybrid
+    runs (for example 23 compute cores + one dedicated GPU control core) that can make
+    fork/join placement depend on runtime initialization order.  An explicit place list
+    keeps OpenMP workers on exactly the CPUs recorded in TaskSpec/manifest.
+    """
+    if not cpus:
+        return None
+    return ",".join(f"{{{cpu}}}" for cpu in cpus)
 
 
 class ExperimentRunner:
@@ -110,7 +140,8 @@ class ExperimentRunner:
             dataset = self.dataset_factory.get_or_create(task.dataset)
             self._validate_memory_budget(dataset)
             self.thermal.wait_until_safe(task.gpu_ids)
-            # `pre_task` is deliberately after the thermal safety gate; `task_entry`
+            self._validate_runtime_idleness(task)
+            # `pre_task` is deliberately after the thermal/idleness safety gates; `task_entry`
             # preserves the state before any wait so cooldown/order effects remain auditable.
             self._capture_telemetry(task, sequence_index, "pre_task")
             self._run_worker(task, dataset, sequence_index, started_iso)
@@ -149,6 +180,62 @@ class ExperimentRunner:
             )
             return
 
+    def _validate_runtime_idleness(
+        self, task: TaskSpec, allowed_gpu_pids: set[int] | None = None
+    ) -> None:
+        if not self.config.measurement.strict_preflight:
+            return
+        allowed_gpu_pids = allowed_gpu_pids or set()
+
+        load = psutil.cpu_percent(interval=0.25)
+        limit = self.config.measurement.max_preflight_cpu_load_percent
+        if load > limit:
+            raise RuntimeError(
+                f"strict runtime idleness gate: CPU utilization {load:.1f}% exceeds {limit:.1f}%"
+            )
+
+        if pynvml is None or not task.gpu_ids:
+            return
+        try:
+            pynvml.nvmlInit()
+            for gpu_id in task.gpu_ids:
+                handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_id)
+                compute = []
+                try:
+                    compute = [
+                        int(p.pid)
+                        for p in pynvml.nvmlDeviceGetComputeRunningProcesses(handle)
+                        if int(p.pid) not in allowed_gpu_pids
+                    ]
+                except Exception:
+                    pass
+                if compute:
+                    raise RuntimeError(
+                        f"strict runtime idleness gate: GPU {gpu_id} has foreign compute processes {sorted(set(compute))}"
+                    )
+
+                if not self.config.measurement.allow_gpu_graphics_processes:
+                    graphics_fn = getattr(pynvml, "nvmlDeviceGetGraphicsRunningProcesses", None)
+                    graphics = []
+                    if graphics_fn is not None:
+                        try:
+                            graphics = [
+                                int(p.pid)
+                                for p in graphics_fn(handle)
+                                if int(p.pid) not in allowed_gpu_pids
+                            ]
+                        except Exception:
+                            pass
+                    if graphics:
+                        raise RuntimeError(
+                            f"strict runtime idleness gate: GPU {gpu_id} has graphics processes {sorted(set(graphics))}"
+                        )
+        finally:
+            try:
+                pynvml.nvmlShutdown()
+            except Exception:
+                pass
+
     def _run_worker(
         self,
         task: TaskSpec,
@@ -160,7 +247,13 @@ class ExperimentRunner:
         stderr_path = self.results.stderr_path(task.task_instance_id)
         env = os.environ.copy()
         env["OMP_PROC_BIND"] = "spread"
-        env["OMP_PLACES"] = "threads"
+        explicit_places = openmp_places_for_cpus(task.cpu_affinity)
+        if explicit_places is not None:
+            env["OMP_PLACES"] = explicit_places
+        else:
+            # GPU-only workers do not execute OpenMP reductions; keep a valid fallback
+            # for native self-tests or future CPU work without changing their CPU mask.
+            env["OMP_PLACES"] = "threads"
         task_monotonic_start = time.monotonic()
         with stderr_path.open("w", encoding="utf-8") as stderr_file:
             process = subprocess.Popen(
@@ -211,6 +304,11 @@ class ExperimentRunner:
                     + (f" (probe_mean={timing_probe_mean_us:.3f} us)" if timing_probe_mean_us is not None else ""),
                     flush=True,
                 )
+                # Dataset replica materialization, CUDA setup, scheduler calibration and
+                # warm-up happen before READY/PROBE. Re-apply safety/idleness gates here
+                # so those excluded setup phases cannot silently determine TIMING start state.
+                self.thermal.wait_until_safe(task.gpu_ids)
+                self._validate_runtime_idleness(task, {process.pid})
                 if self.config.telemetry.capture_pre_post_timing:
                     self._capture_telemetry(task, sequence_index, "pre_timing")
                 timing_timestamp_start = utc_now_iso()
@@ -260,6 +358,8 @@ class ExperimentRunner:
                     energy_started = False
                     energy_stopped = False
                     try:
+                        self.thermal.wait_until_safe(task.gpu_ids)
+                        self._validate_runtime_idleness(task, {process.pid})
                         if self.config.telemetry.capture_pre_post_energy:
                             self._capture_telemetry(task, sequence_index, "pre_energy")
                         energy_timestamp_start = utc_now_iso()
@@ -396,6 +496,8 @@ class ExperimentRunner:
                         "warmup_median_us": ready.payload.get("warmup_median_us"),
                         "strategy_create_us": ready.payload.get("strategy_create_us"),
                         "prepare_us": ready.payload.get("prepare_us"),
+                        "dataset_replica_count": ready.payload.get("dataset_replica_count"),
+                        "dataset_resident_bytes": ready.payload.get("dataset_resident_bytes"),
                         "prepare_metrics": ready.payload.get("prepare_metrics", {}),
                         "timing_batch_wall_us": timing_done.payload.get("batch_wall_us"),
                         "energy_batch_wall_us": measured.payload.get("batch_wall_us") if measured else None,
@@ -414,11 +516,11 @@ class ExperimentRunner:
 
     @staticmethod
     def _numerical_mismatch_is_fatal(task: TaskSpec) -> bool:
-        # Integer reductions and floating min/max have exact expected semantics for the
-        # generated finite datasets. Floating SUM is order-sensitive by design; a large
-        # error is preserved as a numerical-quality result rather than reclassified as
-        # an infrastructure failure.
-        return task.operation.value != "sum" or task.dataset.dtype.value in {"int32", "int64"}
+        # A tolerance breach means the implementation did not satisfy the benchmark's
+        # correctness contract. Floating-point SUM remains order-sensitive, but that is
+        # already reflected in ResultValidator's dtype/count/cancellation-aware tolerance.
+        # Invalid numerical results must never remain eligible for a performance ranking.
+        return True
 
     def _capture_telemetry(self, task: TaskSpec, sequence_index: int, phase: str) -> None:
         if not self.config.telemetry.enabled:
@@ -467,6 +569,7 @@ class ExperimentRunner:
             "ema_alpha": 0.25,
             "pipeline_streams": 4,
             "pipeline_chunks": 16,
+            "pipeline_chunk_elements": 0,
             **task.algorithm_params,
         }
         cmd = [
@@ -485,6 +588,9 @@ class ExperimentRunner:
             "--cpu-threads", str(max(1, len(task.cpu_affinity))),
             "--warmup-runs", str(self.config.measurement.warmup_runs),
             "--calibration-repetitions", str(self.config.measurement.scheduler_calibration_repetitions),
+            "--calibration-bursts", str(self.config.measurement.scheduler_calibration_bursts),
+            "--cache-rotation-target-bytes", str(self.config.measurement.cache_rotation_target_bytes),
+            "--cache-rotation-max-replicas", str(self.config.measurement.cache_rotation_max_replicas),
             "--block-size", str(params["block_size"]),
             "--chunk-size", str(params["chunk_size"]),
             "--min-chunk-size", str(params["min_chunk_size"]),
@@ -494,18 +600,27 @@ class ExperimentRunner:
             "--ema-alpha", str(params["ema_alpha"]),
             "--pipeline-streams", str(params["pipeline_streams"]),
             "--pipeline-chunks", str(params["pipeline_chunks"]),
+            "--pipeline-chunk-elements", str(params["pipeline_chunk_elements"]),
         ]
         if task.memory_policy == "interleave" and shutil.which("numactl") and self.topology.numa_nodes:
             nodes = ",".join(map(str, sorted(self.topology.numa_nodes)))
             return ["numactl", f"--interleave={nodes}", *cmd]
         return cmd
 
+    def _dataset_resident_bytes(self, dataset_bytes: int) -> int:
+        m = self.config.measurement
+        return cache_rotated_resident_bytes(
+            dataset_bytes, m.cache_rotation_target_bytes, m.cache_rotation_max_replicas
+        )
+
     def _validate_dataset_spec_memory_budget(self, spec) -> None:
-        size = dataset_size_bytes(spec)
-        fraction = size / max(1, self.topology.total_ram_bytes)
+        dataset_bytes = dataset_size_bytes(spec)
+        resident = self._dataset_resident_bytes(dataset_bytes)
+        fraction = resident / max(1, self.topology.total_ram_bytes)
         if fraction > self.config.measurement.max_dataset_ram_fraction:
             raise MemoryError(
-                f"dataset would use {fraction:.1%} of RAM before generation, exceeding configured limit "
+                f"cache-rotated worker dataset would use {fraction:.1%} of RAM "
+                f"({resident} bytes resident from {dataset_bytes} source bytes), exceeding configured limit "
                 f"{self.config.measurement.max_dataset_ram_fraction:.1%}"
             )
 
@@ -520,10 +635,13 @@ class ExperimentRunner:
                 )
 
     def _validate_memory_budget(self, dataset: DatasetArtifact) -> None:
-        fraction = dataset.metadata["size_bytes"] / max(1, self.topology.total_ram_bytes)
+        source_bytes = int(dataset.metadata["size_bytes"])
+        resident = self._dataset_resident_bytes(source_bytes)
+        fraction = resident / max(1, self.topology.total_ram_bytes)
         if fraction > self.config.measurement.max_dataset_ram_fraction:
             raise MemoryError(
-                f"dataset uses {fraction:.1%} of RAM, exceeding configured limit "
+                f"cache-rotated worker dataset uses {fraction:.1%} of RAM "
+                f"({resident} bytes resident from {source_bytes} source bytes), exceeding configured limit "
                 f"{self.config.measurement.max_dataset_ram_fraction:.1%}"
             )
 

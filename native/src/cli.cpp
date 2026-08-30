@@ -56,6 +56,9 @@ WorkerConfig parse_cli(int argc, char** argv) {
         else if (arg == "--cpu-threads") cfg.cpu_threads = std::stoi(require_value(i, argc, argv, arg));
         else if (arg == "--warmup-runs") cfg.warmup_runs = std::stoi(require_value(i, argc, argv, arg));
         else if (arg == "--calibration-repetitions") cfg.calibration_repetitions = std::stoi(require_value(i, argc, argv, arg));
+        else if (arg == "--calibration-bursts") cfg.calibration_bursts = std::stoi(require_value(i, argc, argv, arg));
+        else if (arg == "--cache-rotation-target-bytes") cfg.cache_rotation_target_bytes = std::stoull(require_value(i, argc, argv, arg));
+        else if (arg == "--cache-rotation-max-replicas") cfg.cache_rotation_max_replicas = std::stoull(require_value(i, argc, argv, arg));
         else if (arg == "--block-size") cfg.block_size = std::stoi(require_value(i, argc, argv, arg));
         else if (arg == "--chunk-size") cfg.chunk_size = std::stoull(require_value(i, argc, argv, arg));
         else if (arg == "--min-chunk-size") cfg.min_chunk_size = std::stoull(require_value(i, argc, argv, arg));
@@ -65,6 +68,7 @@ WorkerConfig parse_cli(int argc, char** argv) {
         else if (arg == "--ema-alpha") cfg.ema_alpha = std::stod(require_value(i, argc, argv, arg));
         else if (arg == "--pipeline-streams") cfg.pipeline_streams = std::stoi(require_value(i, argc, argv, arg));
         else if (arg == "--pipeline-chunks") cfg.pipeline_chunks = std::stoi(require_value(i, argc, argv, arg));
+        else if (arg == "--pipeline-chunk-elements") cfg.pipeline_chunk_elements = std::stoull(require_value(i, argc, argv, arg));
         else throw std::invalid_argument("unknown argument: " + arg);
     }
 
@@ -81,6 +85,12 @@ WorkerConfig parse_cli(int argc, char** argv) {
     if (cfg.warmup_runs < 1) throw std::invalid_argument("--warmup-runs must be positive");
     if (cfg.calibration_repetitions < 1 || cfg.calibration_repetitions > 100) {
         throw std::invalid_argument("--calibration-repetitions must be in [1,100]");
+    }
+    if (cfg.calibration_bursts < 1 || cfg.calibration_bursts > 9) {
+        throw std::invalid_argument("--calibration-bursts must be in [1,9]");
+    }
+    if (cfg.cache_rotation_max_replicas < 1 || cfg.cache_rotation_max_replicas > 1024) {
+        throw std::invalid_argument("--cache-rotation-max-replicas must be in [1,1024]");
     }
     if (cfg.block_size < 32 || cfg.block_size > 1024 || (cfg.block_size & (cfg.block_size - 1)) != 0) {
         throw std::invalid_argument("--block-size must be a power of two in [32, 1024]");

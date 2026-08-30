@@ -1,0 +1,126 @@
+# FINAL v3 large-N numerical correctness gate. NOT thesis performance data.
+# Purpose: verify floating SUM correctness/tolerance at scales used by confirmatory runs.
+output_dir: results
+dataset_cache_dir: .prbench/datasets
+
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: "on"
+  jobs: null
+  cxx_compiler: null
+  cuda_host_compiler: null
+
+measurement:
+  warmup_runs: 2
+  scheduler_calibration_repetitions: 3
+  timing_repetitions: 3
+  timing_probe_repetitions: 3
+  timing_target_batch_seconds: 0.05
+  timing_min_repetitions: 3
+  timing_max_repetitions: 3
+  cache_rotation_target_bytes: 268435456
+  cache_rotation_max_replicas: 1024
+  energy_batch_repetitions: 1
+  energy_target_batch_seconds: 0.5
+  energy_min_repetitions: 1
+  energy_max_repetitions: 3
+  blocks: 1
+  randomization_seed: 20260831
+  max_dataset_ram_fraction: 0.60
+  gpu_memory_safety_fraction: 0.80
+  thermal_safety_gpu_c: 85
+  thermal_safety_cpu_c: 95
+  thermal_wait_timeout_s: 300
+  worker_event_timeout_s: 3600
+  strict_preflight: false
+  max_preflight_cpu_load_percent: 20.0
+  allow_gpu_graphics_processes: true
+
+energy:
+  enable_cpu: false
+  enable_gpu: false
+  gpu_power_fallback_poll_ms: 50
+
+telemetry:
+  enabled: true
+  capture_cpu_frequency: true
+  capture_cpu_temperature: true
+  capture_gpu_state: true
+  capture_pre_post_timing: true
+  capture_pre_post_energy: false
+
+system_baselines:
+  capture_memory_inventory: true
+  stream_executable: null
+  stream_args: []
+  stream_timeout_s: 120
+
+experiments:
+  # All algorithm families at a large but practical size.
+  - id: numerical_all_algorithms
+    operations: [sum]
+    datasets:
+      - {size: 100000000, dtype: float32, distribution: symmetric_uniform, seed: 32101,
+         low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 100000000, dtype: float64, distribution: symmetric_uniform, seed: 32201,
+         low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 16}}
+    algorithms:
+      - {id: cpu_seq}
+      - {id: cpu_omp}
+      - {id: cpu_omp_simd}
+      - {id: gpu_global_atomic, params: {block_size: 128}}
+      - {id: gpu_shared_naive, params: {block_size: 256}}
+      - {id: gpu_warp_atomic, params: {block_size: 256}}
+      - {id: gpu_two_pass, params: {block_size: 128}}
+      - {id: gpu_cub}
+      - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunk_elements: 16777216}}
+      - {id: gpu_cub_device_resident}
+      - {id: gpu_multi_cub_equal}
+      - {id: gpu_multi_cub_profiled}
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_profiled}
+      - {id: hybrid_static_profiled_async,
+         params: {pipeline_streams: 2, pipeline_chunk_elements: 16777216}}
+      - {id: hybrid_dynamic_fixed, params: {chunk_size: 4194304}}
+      - {id: hybrid_dynamic_guided, params: {min_chunk_size: 262144, guided_factor: 4.0}}
+      - {id: hybrid_dynamic_adaptive,
+         params: {min_chunk_size: 65536, max_chunk_size: 16777216,
+                  target_chunk_ms: 2.0, ema_alpha: 0.5}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each, all]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+
+  # Extreme scale: strongest/representative paths only, to prove the numerical contract
+  # at N=1e9 without spending hours on deliberately naive kernels.
+  - id: numerical_extreme_scale
+    operations: [sum]
+    datasets:
+      - {size: 1000000000, dtype: float32, distribution: symmetric_uniform, seed: 32301,
+         low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 1000000000, dtype: float64, distribution: symmetric_uniform, seed: 32401,
+         low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 16}}
+    algorithms:
+      - {id: cpu_omp_simd}
+      - {id: gpu_cub}
+      - {id: gpu_cub_async, params: {pipeline_streams: 2, pipeline_chunk_elements: 16777216}}
+      - {id: gpu_cub_device_resident}
+      - {id: gpu_multi_cub_equal}
+      - {id: gpu_multi_cub_profiled}
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_profiled}
+      - {id: hybrid_static_profiled_async,
+         params: {pipeline_streams: 2, pipeline_chunk_elements: 16777216}}
+      - {id: hybrid_dynamic_adaptive,
+         params: {min_chunk_size: 65536, max_chunk_size: 16777216,
+                  target_chunk_ms: 2.0, ema_alpha: 0.5}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each, all]
+      gpu_control_mode: dedicated
+      memory_policy: interleave

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(parallel_reduction_benchmark_v2_6 LANGUAGES CXX)
+project(parallel_reduction_benchmark_v3_0 LANGUAGES CXX)
 
 option(PRBENCH_ENABLE_CUDA "Build NVIDIA CUDA backends" ON)
 option(PRBENCH_NATIVE_CPU_TUNING "Enable -march=native on GCC/Clang" ON)

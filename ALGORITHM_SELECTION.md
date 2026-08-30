@@ -137,14 +137,15 @@ Jest silnie zależny od topologii konkretnego serwera, a brak P2P zmienia semant
 6. `gpu_warp_atomic` — rejestry + warp shuffle + redukcja blokowa + jeden atomik na blok.
 7. `gpu_two_pass` — hierarchiczna redukcja wieloprzebiegowa bez globalnej kontencji atomików pomiędzy blokami.
 8. `gpu_cub` — CUB DeviceReduce jako nowoczesny baseline biblioteczny.
+9. `gpu_cub_async` — ten sam CUB z bounded pinned-staging pipeline; izoluje wpływ overlapu transferu bez udziału CPU w redukcji.
 
 ## Makro — CPU+GPU
-9. `hybrid_static_equal` — równy statyczny podział.
-10. `hybrid_static_profiled` — podział na podstawie modelu `T(N)=a+bN` dla każdego urządzenia.
-11. `hybrid_static_profiled_async` — ten sam podział, ale bounded pinned-staging asynchronous pipeline; izoluje efekt overlapu.
-12. `hybrid_dynamic_fixed` — centralna kolejka ze stałym chunk size.
-13. `hybrid_dynamic_guided` — guided self-scheduling.
-14. `hybrid_dynamic_adaptive` — scheduler przepustowościowy z EMA i docelowym czasem porcji.
+10. `hybrid_static_equal` — równy statyczny podział.
+11. `hybrid_static_profiled` — podział na podstawie modelu `T(N)=a+bN` dla każdego urządzenia.
+12. `hybrid_static_profiled_async` — ten sam podział, ale bounded pinned-staging asynchronous pipeline; izoluje efekt overlapu.
+13. `hybrid_dynamic_fixed` — centralna kolejka ze stałym chunk size.
+14. `hybrid_dynamic_guided` — guided self-scheduling.
+15. `hybrid_dynamic_adaptive` — scheduler przepustowościowy z EMA i docelowym czasem porcji.
 
 ## Dlaczego taki zestaw jest mocniejszy naukowo
 
@@ -164,9 +165,20 @@ Jest silnie zależny od topologii konkretnego serwera, a brak P2P zmienia semant
 
 ## Baseline'y skalowania multi-GPU dodane w v2.2
 
-Na serwerach z co najmniej dwoma GPU katalog zawiera również dwa kontrolowane baseline'y, które nie zmieniają głównego zestawu czternastu strategii CPU/GPU, lecz są niezbędne do oceny, czy CPU faktycznie wnosi korzyść względem samego zespołu GPU:
+Na serwerach z co najmniej dwoma GPU katalog zawiera również dwa kontrolowane baseline'y, które nie zmieniają głównego zestawu piętnastu strategii CPU/GPU, lecz są niezbędne do oceny, czy CPU faktycznie wnosi korzyść względem samego zespołu GPU:
 
-15. `gpu_multi_cub_equal` — CUB na wszystkich wybranych GPU z równym podziałem danych.
-16. `gpu_multi_cub_profiled` — CUB na wszystkich wybranych GPU z podziałem wyznaczonym z osobnego modelu kosztu każdego GPU.
+16. `gpu_multi_cub_equal` — CUB na wszystkich wybranych GPU z równym podziałem danych.
+17. `gpu_multi_cub_profiled` — CUB na wszystkich wybranych GPU z podziałem wyznaczonym z osobnego modelu kosztu każdego GPU.
 
 Dzięki nim na maszynie 2×GPU można porównać bezpośrednio `GPU0+GPU1` z `CPU+GPU0+GPU1`, zamiast porównywać hybrydę wyłącznie z pojedynczą kartą. Nie należy łączyć tych baseline'ów z algorytmami P2P/NVLink: końcowe skalary są scalane na hoście, dzięki czemu badany jest przede wszystkim podział pracy i przepustowość urządzeń, a nie specyficzna topologia peer-to-peer.
+
+
+## Diagnostyka rezydencji danych (v3.0)
+
+`gpu_cub_device_resident` nie jest osiemnastym algorytmem głównego rankingu.
+Jego semantyka jest celowo inna: wejście jest kopiowane do VRAM podczas warm-upu,
+a mierzone powtórzenia obejmują redukcję urządzeniową i zwrot końcowego skalara.
+Wariant służy do oszacowania górnej granicy korzyści GPU, gdy transfer wejścia został
+zamortyzowany przez wcześniejsze etapy pipeline'u. Należy go raportować obok
+`gpu_cub` i `gpu_cub_async` jako diagnostykę przyczyny, a nie jako bezpośredniego
+konkurenta host-resident CPU/GPU E2E.

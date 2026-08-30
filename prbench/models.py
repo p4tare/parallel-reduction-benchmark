@@ -123,9 +123,11 @@ class HardwareConfig(StrictModel):
 
 class MeasurementConfig(StrictModel):
     warmup_runs: int = Field(default=5, ge=1)
-    # Repetitions per calibration point for profiled/adaptive schedulers. The median
-    # is used; calibration remains outside the reported TIMING window.
+    # Repetitions per burst and independent bursts per calibration point for
+    # profiled/adaptive schedulers. Each burst is reduced to a median, then the
+    # median of burst-medians is used. Calibration remains outside TIMING.
     scheduler_calibration_repetitions: int = Field(default=5, ge=1, le=100)
+    scheduler_calibration_bursts: int = Field(default=3, ge=1, le=9)
     # Fixed repetition count or an automatically sized timing batch. Auto mode runs
     # a short unrecorded probe after warm-up and targets timing_target_batch_seconds.
     timing_repetitions: int | Literal["auto"] = "auto"
@@ -133,6 +135,11 @@ class MeasurementConfig(StrictModel):
     timing_target_batch_seconds: float = Field(default=0.5, gt=0.01, le=30.0)
     timing_min_repetitions: int = Field(default=30, ge=3)
     timing_max_repetitions: int = Field(default=100_000, ge=3, le=1_000_000)
+    # Rotate between identical host replicas during warm-up/probe/timing/energy so
+    # short CPU reductions do not benchmark one permanently hot cache-resident buffer.
+    # Replicas are materialized before timing; pointer rotation itself is outside e2e timing.
+    cache_rotation_target_bytes: int = Field(default=268_435_456, ge=0, le=4_294_967_296)
+    cache_rotation_max_replicas: int = Field(default=64, ge=1, le=1024)
     energy_batch_repetitions: int | Literal["auto"] = "auto"
     energy_target_batch_seconds: float = Field(default=3.0, gt=0.1, le=120.0)
     energy_min_repetitions: int = Field(default=10, ge=1)
@@ -148,6 +155,10 @@ class MeasurementConfig(StrictModel):
     thermal_safety_cpu_c: float = Field(default=95.0, ge=40.0, le=115.0)
     thermal_wait_timeout_s: float = Field(default=300.0, ge=0.0)
     worker_event_timeout_s: float = Field(default=1800.0, gt=0.0, le=86400.0)
+    # Thesis-grade gate: convert environmental contamination warnings into hard failures.
+    strict_preflight: bool = False
+    max_preflight_cpu_load_percent: float = Field(default=5.0, ge=0.0, le=100.0)
+    allow_gpu_graphics_processes: bool = False
 
     @model_validator(mode="after")
     def validate_repetitions(self) -> "MeasurementConfig":

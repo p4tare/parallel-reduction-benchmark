@@ -1,4 +1,6 @@
-# Parallel Reduction Benchmark v2.7.0
+# Parallel Reduction Benchmark v3.0.0
+
+> **Aktualizacja v3.0.0:** finalne utwardzenie metodologii: cache-rotated host datasets, cache-fair scheduler calibration, strict per-task idleness gates, każdy błąd numeryczny poza tolerancją jako `invalid`, nowy `gpu_cub_async` oraz bounded async pipeline przez `pipeline_chunk_elements`. Finalny workflow i konfiguracje: [`PATCH_V3_0.md`](PATCH_V3_0.md) oraz [`FINAL_RUNBOOK_V3.md`](FINAL_RUNBOOK_V3.md).
 
 > **Aktualizacja v2.7.0:** utwardzono ścieżkę multi-GPU: selektory par GPU, kontrola VRAM/RAM przed uruchomieniem, diagnostyka NVML/CUDA_VISIBLE_DEVICES, lokalne przypinanie kalibracji i jawne ostrzeżenia NUMA. Zachowano wszystkie rozszerzenia pomiarowe v2.6. Szczegóły: [`PATCH_V2_7.md`](PATCH_V2_7.md).
 
@@ -53,10 +55,11 @@ The operation is carried through CPU/GPU backends, hybrid scheduling, validation
 
 ## Algorithm catalog
 
-The core scientific comparison contains fourteen CPU, GPU and CPU+GPU strategies. On machines with at least two GPUs two additional CUB multi-GPU baselines are enabled:
+The v3 scientific comparison contains fifteen CPU, single-GPU and CPU+GPU strategies. On machines with at least two GPUs two additional CUB multi-GPU baselines are enabled:
 
 - `cpu_seq`, `cpu_omp`, `cpu_omp_simd`;
-- `gpu_global_atomic`, `gpu_shared_naive`, `gpu_warp_atomic`, `gpu_two_pass`, `gpu_cub`;
+- `gpu_global_atomic`, `gpu_shared_naive`, `gpu_warp_atomic`, `gpu_two_pass`, `gpu_cub`, `gpu_cub_async`;
+- diagnostic-only: `gpu_cub_device_resident` (input already in VRAM; excluded from the main host-resident ranking);
 - `hybrid_static_equal`, `hybrid_static_profiled`, `hybrid_static_profiled_async`;
 - `hybrid_dynamic_fixed`, `hybrid_dynamic_guided`, `hybrid_dynamic_adaptive`;
 - `gpu_multi_cub_equal`, `gpu_multi_cub_profiled` (2+ GPU only).
@@ -119,13 +122,19 @@ For the already frozen single-GPU sum campaign, `configs/final_single_gpu_sum_ti
 
 ## Before a final research campaign
 
-Do not use `configs/research_core.yaml` as final thesis data: it is an exploratory sweep that mixes parameter tuning with comparison. First run:
+Do not use `configs/research_core.yaml` as final thesis data. v3 provides an explicit staged protocol:
 
 ```bash
-prbench run --config configs/pilot_tuning.yaml
+prbench run --config configs/FINAL_VALIDATION_v3.yaml
+prbench run --config configs/FINAL_TUNING_v3.yaml
+# freeze selected tunables in Git before confirmatory runs
+prbench run --config configs/FINAL_RESEARCH_ALGORITHMS_v3.yaml
+prbench run --config configs/FINAL_RESEARCH_SCALING_v3.yaml
+# explanatory transfer/residency diagnostic
+prbench run --config configs/FINAL_TRANSFER_DIAGNOSTICS_v3.yaml
 ```
 
-Choose and freeze the tuning parameters, then create separate confirmatory CPU, GPU and hybrid configurations. See `RESEARCH_PROTOCOL.md`.
+See `FINAL_RUNBOOK_V3.md` and `RESEARCH_PROTOCOL.md`.
 
 Before each final run execute:
 
@@ -138,7 +147,7 @@ Final energy measurements should use exclusive access to the node/CPUs and selec
 
 ## Measurement boundary
 
-The primary `e2e_us` starts with the dataset already resident in host RAM and ends when the final scalar is available in host RAM. It includes scheduling, CPU computation, H2D, GPU reduction, D2H, synchronization and final host merge as applicable. It excludes build/compilation, dataset file loading, CUDA context initialization, device allocation, warm-up, model calibration and result serialization.
+The primary `e2e_us` starts with the active dataset replica already resident in host RAM and ends when the final scalar is available in host RAM. In v3, small/medium datasets rotate across byte-identical host replicas before each repetition and calibration sample so the benchmark does not silently turn into repeated hot-LLC reduction of one address range. It includes scheduling, CPU computation, H2D, GPU reduction, D2H, synchronization and final host merge as applicable. It excludes build/compilation, dataset file loading, CUDA context initialization, device allocation, warm-up, model calibration and result serialization.
 
 Timing and energy are measured in separate phases. Individual timing repetitions are retained. Energy uses a repeated batch long enough to obtain a stable counter interval, then stores batch energy and per-reduction derived energy rather than duplicating one process-level value into every timing row.
 

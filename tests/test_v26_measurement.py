@@ -8,6 +8,7 @@ from prbench.cli import _design_warnings
 from prbench.config import ConfigurationLoader
 from prbench.models import MeasurementConfig
 from prbench.results import ResultsStore
+from prbench.runner import openmp_places_for_cpus
 from prbench.telemetry import TelemetryCollector
 
 
@@ -95,3 +96,50 @@ def test_preflight_design_warning_catches_operation_confounding(tmp_path: Path) 
 
     warnings = _design_warnings([task("performance", "sum"), task("efficiency", "max")])
     assert any("confounding" in item and "CPU core classes" in item for item in warnings)
+
+
+def test_thesis_preflight_and_cache_rotation_controls_validate() -> None:
+    cfg = MeasurementConfig(
+        timing_repetitions="auto",
+        cache_rotation_target_bytes=256 * 1024 * 1024,
+        cache_rotation_max_replicas=64,
+        strict_preflight=True,
+        max_preflight_cpu_load_percent=5.0,
+        allow_gpu_graphics_processes=False,
+    )
+    assert cfg.cache_rotation_target_bytes == 256 * 1024 * 1024
+    assert cfg.cache_rotation_max_replicas == 64
+    assert cfg.strict_preflight is True
+
+
+def test_cpu_temperature_snapshot_ignores_non_cpu_groups(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    import psutil
+    from prbench.telemetry import _cpu_temperature_snapshot
+
+    temp = lambda label, current, high, critical: SimpleNamespace(
+        label=label, current=current, high=high, critical=critical
+    )
+    monkeypatch.setattr(psutil, "sensors_temperatures", lambda: {
+        "coretemp": [temp("Package id 0", 55.0, 85.0, 95.0)],
+        "eno2": [temp("PHY Temperature", 75.0, None, None)],
+        "nvme": [temp("Composite", 65.0, 80.0, 90.0)],
+    })
+    snap = _cpu_temperature_snapshot()
+    assert snap["max_c"] == 55.0
+    assert snap["available"] is True
+
+
+def test_results_store_exposes_problem_rows(tmp_path: Path) -> None:
+    store = ResultsStore(tmp_path)
+    store.append_task({"status": "ok", "algorithm_id": "cpu_omp_simd"})
+    store.append_task({"status": "failed", "algorithm_id": "gpu_cub", "error": "boom"})
+    store.append_task({"status": "invalid", "algorithm_id": "gpu_two_pass"})
+    problems = store.task_problem_rows()
+    assert [row["status"] for row in problems] == ["failed", "invalid"]
+
+
+def test_openmp_places_match_explicit_cpu_pool() -> None:
+    assert openmp_places_for_cpus([1, 2, 7]) == "{1},{2},{7}"
+    assert openmp_places_for_cpus([]) is None

@@ -295,11 +295,26 @@ public:
         sm_count_ = std::max(1, prop.multiProcessorCount);
         element_size_ = data_type_size(cfg_.dtype);
 
-        if (cfg_.transfer_policy == TransferPolicy::AsyncPipeline && cfg_.backend != GpuBackendKind::Cub) {
-            throw std::invalid_argument("async_pipeline is currently supported only with the CUB GPU backend");
+        if ((cfg_.transfer_policy == TransferPolicy::AsyncPipeline ||
+             cfg_.transfer_policy == TransferPolicy::DeviceResident) &&
+            cfg_.backend != GpuBackendKind::Cub) {
+            throw std::invalid_argument(
+                "async_pipeline and device_resident are currently supported only with the CUB GPU backend"
+            );
         }
-        if (cfg_.transfer_policy == TransferPolicy::Sync) setup_sync();
-        else setup_pipeline();
+
+        switch (cfg_.transfer_policy) {
+            case TransferPolicy::Sync:
+            case TransferPolicy::DeviceResident:
+                // Device-resident execution needs one full-size device input, one CUB
+                // output/temp allocation and the pinned scalar output used by reduce_device_resident().
+                // It must NOT use setup_pipeline(), whose host allocations are chunk staging buffers.
+                setup_sync();
+                break;
+            case TransferPolicy::AsyncPipeline:
+                setup_pipeline();
+                break;
+        }
     }
 
     ~CudaGpuReducer() override {
@@ -356,8 +371,11 @@ private:
     }
 
     void setup_pipeline() {
-        const std::size_t chunk_capacity =
-            std::max<std::size_t>(1, (cfg_.max_elements + cfg_.pipeline_chunks - 1) / cfg_.pipeline_chunks);
+        pipeline_chunk_capacity_ = cfg_.pipeline_chunk_elements > 0
+            ? std::max<std::size_t>(1, std::min(cfg_.max_elements, cfg_.pipeline_chunk_elements))
+            : std::max<std::size_t>(1, (cfg_.max_elements + cfg_.pipeline_chunks - 1) / cfg_.pipeline_chunks);
+        pipeline_max_chunks_ =
+            std::max<std::size_t>(1, (cfg_.max_elements + pipeline_chunk_capacity_ - 1) / pipeline_chunk_capacity_);
         streams_.resize(cfg_.pipeline_streams);
         d_inputs_.resize(cfg_.pipeline_streams, nullptr);
         d_outputs_.resize(cfg_.pipeline_streams, nullptr);
@@ -368,17 +386,17 @@ private:
         h_pipeline_inputs_.resize(cfg_.pipeline_streams, nullptr);
         for (int s = 0; s < cfg_.pipeline_streams; ++s) {
             CUDA_CHECK(cudaStreamCreateWithFlags(&streams_[s], cudaStreamNonBlocking));
-            CUDA_CHECK(cudaMalloc(&d_inputs_[s], chunk_capacity * element_size_));
+            CUDA_CHECK(cudaMalloc(&d_inputs_[s], pipeline_chunk_capacity_ * element_size_));
             CUDA_CHECK(cudaMalloc(&d_outputs_[s], element_size_));
-            CUDA_CHECK(cudaHostAlloc(&h_pipeline_inputs_[s], chunk_capacity * element_size_, cudaHostAllocPortable));
-            setup_backend_storage(s, chunk_capacity);
+            CUDA_CHECK(cudaHostAlloc(&h_pipeline_inputs_[s], pipeline_chunk_capacity_ * element_size_, cudaHostAllocPortable));
+            setup_backend_storage(s, pipeline_chunk_capacity_);
         }
         CUDA_CHECK(cudaHostAlloc(
-            &h_pipeline_results_, static_cast<std::size_t>(cfg_.pipeline_chunks) * element_size_,
+            &h_pipeline_results_, pipeline_max_chunks_ * element_size_,
             cudaHostAllocPortable
         ));
-        pipeline_events_.reserve(static_cast<std::size_t>(cfg_.pipeline_chunks) * 3);
-        for (int i = 0; i < cfg_.pipeline_chunks * 3; ++i) {
+        pipeline_events_.reserve(pipeline_max_chunks_ * 3);
+        for (std::size_t i = 0; i < pipeline_max_chunks_ * 3; ++i) {
             pipeline_events_.push_back(std::make_unique<EventPair>());
         }
     }
@@ -439,6 +457,9 @@ private:
     PartialResult reduce_dispatch_op(const T* host_data, std::size_t count) {
         if (cfg_.transfer_policy == TransferPolicy::AsyncPipeline) {
             return reduce_pipeline<T, Op>(host_data, count);
+        }
+        if (cfg_.transfer_policy == TransferPolicy::DeviceResident) {
+            return reduce_device_resident<T, Op>(host_data, count);
         }
         return reduce_sync<T, Op>(host_data, count);
     }
@@ -538,29 +559,93 @@ private:
     }
 
     template <typename T, ReductionOperation Op>
+    PartialResult reduce_device_resident(const T* host_data, std::size_t count) {
+        CUDA_CHECK(cudaSetDevice(cfg_.device_id));
+        auto* d_input = static_cast<T*>(d_inputs_[0]);
+        auto* d_output = static_cast<T*>(d_outputs_[0]);
+
+        DeviceMetrics metrics;
+        metrics.device_id = cfg_.device_id;
+        metrics.elements = count;
+        metrics.chunks = 1;
+
+        if (!device_resident_loaded_) {
+            const auto upload_start = host_clock::now();
+            CUDA_CHECK(cudaMemcpy(
+                d_input,
+                host_data,
+                count * sizeof(T),
+                cudaMemcpyHostToDevice
+            ));
+            const auto upload_end = host_clock::now();
+            metrics.h2d_us =
+                std::chrono::duration<double, std::micro>(upload_end - upload_start).count();
+            device_resident_loaded_ = true;
+        }
+        auto* h_output = static_cast<T*>(h_output_pinned_);
+
+        // Event construction is setup/instrumentation overhead, not part of the
+        // device-resident solution interval (same convention as reduce_sync).
+        EventPair kernel;
+        EventPair d2h;
+        const auto host_start = host_clock::now();
+        kernel.record_start(streams_[0]);
+        CUDA_CHECK(cub_reduce<T, Op>(
+            d_temp_[0],
+            d_temp_bytes_[0],
+            d_input,
+            d_output,
+            count,
+            streams_[0]
+        ));
+        kernel.record_stop(streams_[0]);
+
+        d2h.record_start(streams_[0]);
+        CUDA_CHECK(cudaMemcpyAsync(
+            h_output,
+            d_output,
+            sizeof(T),
+            cudaMemcpyDeviceToHost,
+            streams_[0]
+        ));
+        d2h.record_stop(streams_[0]);
+        CUDA_CHECK(cudaStreamSynchronize(streams_[0]));
+
+        const auto host_end = host_clock::now();
+        metrics.kernel_us = kernel.elapsed_us();
+        metrics.d2h_us = d2h.elapsed_us();
+        metrics.total_us = std::chrono::duration<double, std::micro>(host_end - host_start).count();
+        return PartialResult{make_value(*h_output), metrics};
+    }
+
+    template <typename T, ReductionOperation Op>
     PartialResult reduce_pipeline(const T* host_data, std::size_t count) {
         CUDA_CHECK(cudaSetDevice(cfg_.device_id));
-        const std::size_t chunk_size = (count + cfg_.pipeline_chunks - 1) / cfg_.pipeline_chunks;
+        const std::size_t chunk_size = pipeline_chunk_capacity_;
+        const std::size_t chunk_count = (count + chunk_size - 1) / chunk_size;
+        if (chunk_count > pipeline_max_chunks_) {
+            throw std::logic_error("async pipeline chunk count exceeds prepared capacity");
+        }
         auto* host_results = static_cast<T*>(h_pipeline_results_);
         DeviceMetrics metrics;
         metrics.device_id = cfg_.device_id;
         const auto host_start = host_clock::now();
-        int used_chunks = 0;
+        std::size_t used_chunks = 0;
 
-        for (int c = 0; c < cfg_.pipeline_chunks; ++c) {
-            const std::size_t offset = static_cast<std::size_t>(c) * chunk_size;
+        for (std::size_t c = 0; c < chunk_count; ++c) {
+            const std::size_t offset = c * chunk_size;
             if (offset >= count) break;
             const std::size_t n = std::min(chunk_size, count - offset);
-            const int slot = c % cfg_.pipeline_streams;
+            const int slot = static_cast<int>(c % static_cast<std::size_t>(cfg_.pipeline_streams));
             auto stream = streams_[slot];
             auto* d_input = static_cast<T*>(d_inputs_[slot]);
             auto* d_output = static_cast<T*>(d_outputs_[slot]);
             auto* h_staging = static_cast<T*>(h_pipeline_inputs_[slot]);
-            EventPair& h2d = *pipeline_events_[static_cast<std::size_t>(c) * 3];
-            EventPair& kernel = *pipeline_events_[static_cast<std::size_t>(c) * 3 + 1];
-            EventPair& d2h = *pipeline_events_[static_cast<std::size_t>(c) * 3 + 2];
+            EventPair& h2d = *pipeline_events_[c * 3];
+            EventPair& kernel = *pipeline_events_[c * 3 + 1];
+            EventPair& d2h = *pipeline_events_[c * 3 + 2];
 
-            if (c >= cfg_.pipeline_streams) CUDA_CHECK(cudaStreamSynchronize(stream));
+            if (c >= static_cast<std::size_t>(cfg_.pipeline_streams)) CUDA_CHECK(cudaStreamSynchronize(stream));
             const auto staging_start = host_clock::now();
             std::memcpy(h_staging, host_data + offset, n * sizeof(T));
             const auto staging_end = host_clock::now();
@@ -584,11 +669,11 @@ private:
         const auto host_end = host_clock::now();
 
         T result = reduction_identity<T, Op>();
-        for (int c = 0; c < used_chunks; ++c) {
+        for (std::size_t c = 0; c < used_chunks; ++c) {
             result = reduction_combine<T, Op>(result, host_results[c]);
-            metrics.h2d_us += pipeline_events_[static_cast<std::size_t>(c) * 3]->elapsed_us();
-            metrics.kernel_us += pipeline_events_[static_cast<std::size_t>(c) * 3 + 1]->elapsed_us();
-            metrics.d2h_us += pipeline_events_[static_cast<std::size_t>(c) * 3 + 2]->elapsed_us();
+            metrics.h2d_us += pipeline_events_[c * 3]->elapsed_us();
+            metrics.kernel_us += pipeline_events_[c * 3 + 1]->elapsed_us();
+            metrics.d2h_us += pipeline_events_[c * 3 + 2]->elapsed_us();
         }
         metrics.chunks = static_cast<std::size_t>(used_chunks);
         metrics.elements = count;
@@ -609,7 +694,10 @@ private:
     void* h_output_pinned_{nullptr};
     std::vector<void*> h_pipeline_inputs_;
     void* h_pipeline_results_{nullptr};
+    std::size_t pipeline_chunk_capacity_{1};
+    std::size_t pipeline_max_chunks_{1};
     std::vector<std::unique_ptr<EventPair>> pipeline_events_;
+    bool device_resident_loaded_{false};
 };
 
 }  // namespace

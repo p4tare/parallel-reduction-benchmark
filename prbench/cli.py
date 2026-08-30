@@ -14,7 +14,7 @@ from .build import BuildError, CMakeBuilder
 from .catalog import AlgorithmCatalog
 from .config import ConfigurationLoader
 from .datasets import DatasetFactory
-from .capacity import dataset_size_bytes, gpu_capacity_rows
+from .capacity import cache_rotation_replicas, dataset_size_bytes, gpu_capacity_rows
 from .energy import NvmlEnergyMeter, RaplEnergyMeter
 from .manifest import create_manifest
 from .results import ResultsStore
@@ -188,6 +188,23 @@ def cmd_run(args: argparse.Namespace) -> int:
     final_status = "completed_with_errors" if counts.get("failed", 0) or counts.get("invalid", 0) else "completed"
     results.finalize_manifest(status=final_status)
     print(f"Task status counts: {json.dumps(counts, sort_keys=True)}", flush=True)
+    if counts.get("failed", 0) or counts.get("invalid", 0):
+        problems = results.task_problem_rows()
+        print(f"Problem task summary ({len(problems)}):", flush=True)
+        for row in problems:
+            detail = row.get("error")
+            if not detail and row.get("status") == "invalid":
+                detail = (
+                    f"numerical mismatch count={row.get('numerical_mismatch_count', 'unknown')}"
+                )
+            print(
+                "  "
+                f"status={row.get('status')} algorithm={row.get('algorithm_id')} "
+                f"op={row.get('operation')} N={row.get('dataset_size')} "
+                f"dtype={row.get('dtype')} GPUs={row.get('gpu_ids')} "
+                f"task={row.get('task_instance_id')} reason={detail or 'unspecified'}",
+                flush=True,
+            )
     print(f"Finished. Results: {results.run_dir}", flush=True)
     if counts.get("failed", 0) or counts.get("invalid", 0):
         print("One or more task instances failed or produced invalid results.", file=sys.stderr)
@@ -317,6 +334,19 @@ def _evaluate_preflight(config, topology, tasks) -> dict[str, object]:
         fatal.append("CPU energy is enabled but no readable package-level RAPL counter was found")
     if config.energy.enable_gpu and gpu_ids and not topology.nvml_available:
         fatal.append("GPU energy is enabled but NVML is unavailable")
+    gpu_energy_diagnostics = NvmlEnergyMeter.diagnostics(gpu_ids) if config.energy.enable_gpu else []
+    if config.measurement.strict_preflight and config.energy.enable_gpu and gpu_ids:
+        diagnostics_by_gpu = {int(item.get("gpu_id", -1)): item for item in gpu_energy_diagnostics}
+        for gpu_id in gpu_ids:
+            item = diagnostics_by_gpu.get(gpu_id, {})
+            if not (
+                bool(item.get("total_energy_counter_supported"))
+                or bool(item.get("power_usage_supported"))
+            ):
+                fatal.append(
+                    f"GPU {gpu_id} has neither a readable total-energy counter nor readable power telemetry; "
+                    "strict thesis energy measurement cannot proceed"
+                )
 
     gpu_compute_processes, gpu_graphics_processes = _gpu_processes(gpu_ids)
     busy = {gpu: pids for gpu, pids in gpu_compute_processes.items() if pids}
@@ -324,14 +354,30 @@ def _evaluate_preflight(config, topology, tasks) -> dict[str, object]:
         fatal.append(f"other GPU compute processes are present: {busy}; use exclusive GPUs/node")
     graphics_busy = {gpu: pids for gpu, pids in gpu_graphics_processes.items() if pids}
     if graphics_busy:
-        warnings.append(
+        message = (
             f"GPU graphics processes are present: {graphics_busy}; GPU energy includes their activity. "
             "Prefer non-display GPUs for thesis energy measurements."
         )
+        if config.measurement.strict_preflight and not config.measurement.allow_gpu_graphics_processes:
+            fatal.append(message)
+        else:
+            warnings.append(message)
 
     cpu_load = psutil.cpu_percent(interval=0.5)
-    if cpu_load > 10.0:
-        warnings.append(f"system-wide CPU utilization is already {cpu_load:.1f}% before the run")
+    if cpu_load > config.measurement.max_preflight_cpu_load_percent:
+        message = (
+            f"system-wide CPU utilization is already {cpu_load:.1f}% before the run "
+            f"(limit {config.measurement.max_preflight_cpu_load_percent:.1f}%)"
+        )
+        if config.measurement.strict_preflight:
+            fatal.append(message)
+        else:
+            warnings.append(message)
+
+    if config.measurement.strict_preflight:
+        dirty = command_output(["git", "status", "--porcelain"], cwd=_project_root())
+        if dirty:
+            fatal.append("strict_preflight requires a clean Git working tree; commit/stash local changes first")
 
     classes: dict[str, list[int]] = {}
     for cpu in topology.logical_cpus:
@@ -350,23 +396,31 @@ def _evaluate_preflight(config, topology, tasks) -> dict[str, object]:
         if key in dataset_checks:
             continue
         size = dataset_size_bytes(task.dataset)
+        target = int(config.measurement.cache_rotation_target_bytes)
+        replicas = cache_rotation_replicas(
+            size, target, config.measurement.cache_rotation_max_replicas
+        )
+        resident = size * replicas
         item = {
             "dataset_size": task.dataset.size,
             "dtype": task.dataset.dtype.value,
             "size_bytes": size,
+            "cache_rotation_replicas": replicas,
+            "estimated_worker_resident_bytes": resident,
             "configured_ram_limit_bytes": ram_limit,
             "available_ram_bytes_at_preflight": available_ram,
         }
         dataset_checks[key] = item
-        if size > ram_limit:
+        if resident > ram_limit:
             fatal.append(
-                f"dataset {task.dataset.size}x{task.dataset.dtype.value} requires {size} bytes, exceeding "
-                f"max_dataset_ram_fraction budget {ram_limit} bytes"
+                f"dataset {task.dataset.size}x{task.dataset.dtype.value} requires about {resident} resident bytes "
+                f"with cache rotation ({replicas} replicas), exceeding max_dataset_ram_fraction budget "
+                f"{ram_limit} bytes"
             )
-        elif size > int(available_ram * 0.85):
+        elif resident > int(available_ram * 0.85):
             warnings.append(
-                f"dataset {task.dataset.size}x{task.dataset.dtype.value} consumes >85% of currently available RAM; "
-                "page cache/worker/CUDA allocations may cause memory pressure"
+                f"cache-rotated dataset {task.dataset.size}x{task.dataset.dtype.value} consumes >85% of currently "
+                "available RAM; page cache/worker/CUDA allocations may cause memory pressure"
             )
 
     # Device-memory feasibility. Exact estimates can fail-fast; model-based/reference
@@ -441,7 +495,7 @@ def _evaluate_preflight(config, topology, tasks) -> dict[str, object]:
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "gpu_compute_processes": gpu_compute_processes,
         "gpu_graphics_processes": gpu_graphics_processes,
-        "gpu_energy_diagnostics": NvmlEnergyMeter.diagnostics(gpu_ids) if config.energy.enable_gpu else [],
+        "gpu_energy_diagnostics": gpu_energy_diagnostics,
         "gpu_memory_capacity": gpu_memory_rows,
         "multi_gpu_sets": [list(x) for x in multi_sets],
         "rapl_available": bool(rapl and rapl.available),

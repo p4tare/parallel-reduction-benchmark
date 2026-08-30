@@ -26,6 +26,17 @@ def dataset_size_bytes(dataset: Any) -> int:
     return int(dataset.size) * dtype_size_bytes(dataset.dtype)
 
 
+def cache_rotation_replicas(dataset_bytes: int, target_bytes: int, max_replicas: int) -> int:
+    if dataset_bytes <= 0 or target_bytes <= 0:
+        return 1
+    desired = math.ceil(target_bytes / dataset_bytes)
+    return max(1, min(max_replicas, desired))
+
+
+def cache_rotated_resident_bytes(dataset_bytes: int, target_bytes: int, max_replicas: int) -> int:
+    return dataset_bytes * cache_rotation_replicas(dataset_bytes, target_bytes, max_replicas)
+
+
 def _param(task: Any, name: str, default: int) -> int:
     value = task.algorithm_params.get(name, default)
     return int(value)
@@ -49,7 +60,16 @@ def gpu_input_allocation_estimates(task: Any) -> dict[int, dict[str, Any]]:
     transfer = str(task.algorithm.transfer_policy or "sync")
 
     if scheduler == "gpu_only":
-        elements = n
+        if transfer == "async_pipeline":
+            streams = _param(task, "pipeline_streams", 4)
+            chunk_elements = _param(task, "pipeline_chunk_elements", 0)
+            if chunk_elements > 0:
+                elements = min(n, chunk_elements) * streams
+            else:
+                chunks = _param(task, "pipeline_chunks", 16)
+                elements = math.ceil(n / chunks) * streams
+        else:
+            elements = n
         return {gpu: {"input_bytes": elements * item, "kind": "exact", "elements": elements} for gpu in task.gpu_ids}
 
     if scheduler == "gpu_static_equal":
@@ -65,18 +85,26 @@ def gpu_input_allocation_estimates(task: Any) -> dict[int, dict[str, Any]]:
         elements = math.ceil(n / (g + 1))
         if transfer == "async_pipeline":
             streams = _param(task, "pipeline_streams", 4)
-            chunks = _param(task, "pipeline_chunks", 16)
-            capacity = math.ceil(elements / chunks) * streams
+            chunk_elements = _param(task, "pipeline_chunk_elements", 0)
+            if chunk_elements > 0:
+                capacity = min(elements, chunk_elements) * streams
+            else:
+                chunks = _param(task, "pipeline_chunks", 16)
+                capacity = math.ceil(elements / chunks) * streams
             return {gpu: {"input_bytes": capacity * item, "kind": "exact", "elements": capacity} for gpu in task.gpu_ids}
         return {gpu: {"input_bytes": elements * item, "kind": "exact", "elements": elements} for gpu in task.gpu_ids}
 
     if scheduler == "static_profiled":
         if transfer == "async_pipeline":
-            # Worst-case GPU range is the whole dataset.  The actual model-based range is
-            # usually smaller; exceeding this upper bound's headroom is therefore only a warning.
+            # Worst-case GPU range is the whole dataset. With fixed chunk elements the
+            # staging/device allocation is bounded independently of total N.
             streams = _param(task, "pipeline_streams", 4)
-            chunks = _param(task, "pipeline_chunks", 16)
-            capacity = math.ceil(n / chunks) * streams
+            chunk_elements = _param(task, "pipeline_chunk_elements", 0)
+            if chunk_elements > 0:
+                capacity = min(n, chunk_elements) * streams
+            else:
+                chunks = _param(task, "pipeline_chunks", 16)
+                capacity = math.ceil(n / chunks) * streams
             return {gpu: {"input_bytes": capacity * item, "kind": "upper_bound", "elements": capacity} for gpu in task.gpu_ids}
         elements = math.ceil(n / (g + 1))
         return {gpu: {"input_bytes": elements * item, "kind": "reference", "elements": elements} for gpu in task.gpu_ids}

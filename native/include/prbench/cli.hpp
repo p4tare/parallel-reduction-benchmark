@@ -24,6 +24,9 @@ struct WorkerConfig {
     int cpu_threads{1};
     int warmup_runs{5};
     int calibration_repetitions{5};
+    int calibration_bursts{3};
+    std::size_t cache_rotation_target_bytes{268435456};
+    std::size_t cache_rotation_max_replicas{64};
     int block_size{256};
     std::size_t chunk_size{1u << 20};
     std::size_t min_chunk_size{1u << 16};
@@ -33,6 +36,7 @@ struct WorkerConfig {
     double ema_alpha{0.25};
     int pipeline_streams{4};
     int pipeline_chunks{16};
+    std::size_t pipeline_chunk_elements{0};
     bool self_test{false};
     bool build_info{false};
     bool probe_cpu_types{false};

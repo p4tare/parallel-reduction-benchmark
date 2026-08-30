@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "parallel-reduction-benchmark"
-version = "2.7.0"
+version = "3.0.0"
 description = "Research-grade CPU/GPU parallel reduction benchmarking framework"
 readme = "README.md"
 requires-python = ">=3.10"

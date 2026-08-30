@@ -76,29 +76,44 @@ def _cpu_frequency_snapshot(cpu_ids: list[int]) -> dict[str, Any]:
 
 def _cpu_temperature_snapshot() -> dict[str, Any]:
     sensors: list[dict[str, Any]] = []
-    values: list[float] = []
+    primary_cpu_values: list[float] = []
+    fallback_cpu_values: list[float] = []
+    primary_cpu_groups = {"coretemp", "k10temp", "zenpower", "cpu_thermal"}
     try:
         raw = psutil.sensors_temperatures()
     except Exception as exc:  # pragma: no cover - platform dependent
         return {"available": False, "error": f"{type(exc).__name__}: {exc}", "sensors": []}
     for group, entries in raw.items():
+        group_is_primary_cpu = group.lower() in primary_cpu_groups
+        group_is_fallback_cpu = group.lower() == "acpitz"
         for entry in entries:
             if entry.current is None:
                 continue
             current = float(entry.current)
-            values.append(current)
+            if group_is_primary_cpu:
+                primary_cpu_values.append(current)
+            elif group_is_fallback_cpu:
+                fallback_cpu_values.append(current)
             sensors.append(
                 {
                     "group": group,
                     "label": entry.label or None,
                     "current_c": current,
+                    "is_cpu_sensor": group_is_primary_cpu or group_is_fallback_cpu,
+                    "cpu_sensor_priority": (
+                        "primary" if group_is_primary_cpu
+                        else "fallback" if group_is_fallback_cpu
+                        else None
+                    ),
                     "high_c": float(entry.high) if entry.high is not None else None,
                     "critical_c": float(entry.critical) if entry.critical is not None else None,
                 }
             )
+    selected = primary_cpu_values if primary_cpu_values else fallback_cpu_values
     return {
-        "available": bool(sensors),
-        "max_c": max(values) if values else None,
+        "available": bool(selected),
+        "max_c": max(selected) if selected else None,
+        "sensor_scope": "primary_cpu_groups_else_acpitz_fallback",
         "sensors": sensors,
     }
 
