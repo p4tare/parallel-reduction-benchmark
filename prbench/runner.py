@@ -588,6 +588,7 @@ class ExperimentRunner:
             "--cpu-threads", str(max(1, len(task.cpu_affinity))),
             "--warmup-runs", str(self.config.measurement.warmup_runs),
             "--calibration-repetitions", str(self.config.measurement.scheduler_calibration_repetitions),
+            "--calibration-bursts", str(self.config.measurement.scheduler_calibration_bursts),
             "--cache-rotation-target-bytes", str(self.config.measurement.cache_rotation_target_bytes),
             "--cache-rotation-max-replicas", str(self.config.measurement.cache_rotation_max_replicas),
             "--block-size", str(params["block_size"]),
