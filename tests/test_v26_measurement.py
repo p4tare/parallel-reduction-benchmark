@@ -8,6 +8,7 @@ from prbench.cli import _design_warnings
 from prbench.config import ConfigurationLoader
 from prbench.models import MeasurementConfig
 from prbench.results import ResultsStore
+from prbench.runner import openmp_places_for_cpus
 from prbench.telemetry import TelemetryCollector
 
 
