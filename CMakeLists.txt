@@ -61,6 +61,16 @@ if(PRBENCH_HAS_CUDA)
     target_link_libraries(prbench-worker PRIVATE CUDA::cudart)
     target_compile_definitions(prbench-worker PRIVATE PRBENCH_HAS_CUDA=1)
     target_compile_options(prbench-worker PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-O3;-lineinfo>)
+
+    # Experimental worker used by the GPU break-even branch.  It deliberately keeps
+    # reduction backend fixed at CUB while changing only the data-access/memory policy.
+    add_executable(prbench-memory-path-worker native/src/memory_path_worker.cu)
+    set_target_properties(prbench-memory-path-worker PROPERTIES
+        CUDA_STANDARD 17
+        CUDA_STANDARD_REQUIRED ON
+    )
+    target_link_libraries(prbench-memory-path-worker PRIVATE CUDA::cudart)
+    target_compile_options(prbench-memory-path-worker PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-O3;-lineinfo>)
 else()
     target_compile_definitions(prbench-worker PRIVATE PRBENCH_HAS_CUDA=0)
 endif()
