@@ -10,21 +10,9 @@ from .models import RootConfig
 
 
 class PrbenchSafeLoader(yaml.SafeLoader):
-    """Safe YAML loader with YAML 1.2-style boolean semantics.
-
-    PyYAML's default SafeLoader follows YAML 1.1 implicit booleans, where
-    unquoted tokens such as ``on``/``off`` and ``yes``/``no`` are converted
-    to Python booleans.  prbench uses the strings ``auto``, ``on`` and
-    ``off`` for options such as ``build.enable_cuda``, so the YAML 1.1
-    behaviour is surprising and can turn ``enable_cuda: on`` into ``True``
-    before Pydantic validation.
-
-    Keep SafeLoader's security properties, but recognize only true/false
-    spellings as implicit booleans, matching YAML 1.2 expectations.
-    """
+    """Safe YAML loader with YAML 1.2-style boolean semantics."""
 
 
-# Copy resolver tables so the global PyYAML SafeLoader is not modified.
 PrbenchSafeLoader.yaml_implicit_resolvers = {
     key: list(resolvers)
     for key, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
@@ -86,9 +74,16 @@ class ConfigurationLoader:
         elif name in {"chunk_size", "min_chunk_size", "max_chunk_size", "pipeline_chunk_elements"}:
             if as_int() <= 0:
                 raise ValueError(f"{algorithm_id}.{name} must be positive")
-        elif name in {"pipeline_streams", "pipeline_chunks"}:
+        elif name in {"pipeline_streams", "pipeline_chunks", "reuse_count"}:
             if as_int() <= 0:
                 raise ValueError(f"{algorithm_id}.{name} must be positive")
+        elif name == "use_cuda_graphs":
+            if not isinstance(value, bool):
+                raise ValueError(f"{algorithm_id}.use_cuda_graphs must be boolean")
+        elif name == "cpu_fraction":
+            fraction = as_number()
+            if not 0.0 <= fraction < 1.0:
+                raise ValueError(f"{algorithm_id}.cpu_fraction must be in [0,1)")
         elif name == "guided_factor":
             if as_number() <= 0.0:
                 raise ValueError(f"{algorithm_id}.guided_factor must be positive")
