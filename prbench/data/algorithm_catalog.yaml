@@ -29,6 +29,19 @@ algorithms:
     supports_multi_gpu: false
     role: strong_cpu_baseline
 
+  - id: cpu_omp_simd_file_stream
+    label: CPU OpenMP + SIMD streamed from file
+    scheduler: cpu_only
+    cpu_backend: openmp_simd
+    memory_path: cpu_file_stream
+    storage_policy: file_stream
+    requires_cuda: false
+    uses_cpu: true
+    uses_gpu: false
+    supports_multi_gpu: false
+    tunables: [chunk_size]
+    role: out_of_core_cpu_baseline
+
   - id: gpu_global_atomic
     label: GPU global atomic per thread
     scheduler: gpu_only
@@ -78,38 +91,162 @@ algorithms:
     role: optimized_custom_gpu
 
   - id: gpu_cub
-    label: CUB DeviceReduce
+    label: CUB DeviceReduce explicit synchronous copy
     scheduler: gpu_only
     gpu_backend: cub
     transfer_policy: sync
+    memory_path: explicit_sync
     requires_cuda: true
     uses_cpu: false
     uses_gpu: true
     supports_multi_gpu: false
+    tunables: [reuse_count, use_cuda_graphs]
     role: library_gpu_baseline
+
+  - id: gpu_cub_chunked
+    label: CUB DeviceReduce synchronous bounded chunks
+    scheduler: gpu_only
+    gpu_backend: cub
+    transfer_policy: sync
+    memory_path: chunked_sync
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    tunables: [chunk_size, reuse_count]
+    role: bounded_gpu_transfer
 
   - id: gpu_cub_async
     label: CUB DeviceReduce + pinned asynchronous pipeline
     scheduler: gpu_only
     gpu_backend: cub
     transfer_policy: async_pipeline
+    memory_path: async_pipeline
     requires_cuda: true
     uses_cpu: false
     uses_gpu: true
     supports_multi_gpu: false
-    tunables: [pipeline_streams, pipeline_chunks, pipeline_chunk_elements]
+    tunables: [pipeline_streams, pipeline_chunks, pipeline_chunk_elements, reuse_count]
     role: optimized_gpu_transfer_overlap
+
+  - id: gpu_cub_pinned_direct
+    label: CUB DeviceReduce from cudaHostRegister input
+    scheduler: gpu_only
+    gpu_backend: cub
+    transfer_policy: sync
+    memory_path: pinned_direct
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    tunables: [chunk_size, reuse_count]
+    role: registered_host_input
+
+  - id: gpu_cub_zero_copy
+    label: CUB DeviceReduce zero-copy mapped host memory
+    scheduler: gpu_only
+    gpu_backend: cub
+    transfer_policy: sync
+    memory_path: zero_copy
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    tunables: [reuse_count]
+    role: mapped_host_memory
+
+  - id: gpu_cub_managed_fault
+    label: CUB DeviceReduce Unified Memory demand migration
+    scheduler: gpu_only
+    gpu_backend: cub
+    transfer_policy: sync
+    memory_path: managed_fault
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    tunables: [reuse_count]
+    role: unified_memory_demand_paging
+
+  - id: gpu_cub_managed_prefetch
+    label: CUB DeviceReduce Unified Memory explicit prefetch
+    scheduler: gpu_only
+    gpu_backend: cub
+    transfer_policy: sync
+    memory_path: managed_prefetch
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    tunables: [reuse_count]
+    role: unified_memory_prefetch
+
+  - id: gpu_cub_managed_advised
+    label: CUB DeviceReduce Unified Memory advice policy
+    scheduler: gpu_only
+    gpu_backend: cub
+    transfer_policy: sync
+    memory_path: managed_advised
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    tunables: [reuse_count]
+    role: unified_memory_advice
+
+  - id: gpu_cub_hmm
+    label: CUB DeviceReduce HMM system-pageable access
+    scheduler: gpu_only
+    gpu_backend: cub
+    transfer_policy: sync
+    memory_path: hmm_system
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    tunables: [reuse_count]
+    role: hmm_system_memory
 
   - id: gpu_cub_device_resident
     label: CUB DeviceReduce with input already resident on GPU
     scheduler: gpu_only
     gpu_backend: cub
     transfer_policy: device_resident
+    memory_path: device_resident
     requires_cuda: true
     uses_cpu: false
     uses_gpu: true
     supports_multi_gpu: false
+    tunables: [reuse_count, use_cuda_graphs]
     role: diagnostic_device_resident_upper_bound
+
+  - id: gpu_cub_file_stream
+    label: CUB bounded synchronous file-to-GPU streaming
+    scheduler: gpu_only
+    gpu_backend: cub
+    transfer_policy: sync
+    memory_path: chunked_sync
+    storage_policy: file_stream
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    tunables: [chunk_size, reuse_count]
+    role: out_of_core_single_gpu
+
+  - id: gpu_cub_file_stream_async
+    label: CUB pipelined file-to-GPU streaming
+    scheduler: gpu_only
+    gpu_backend: cub
+    transfer_policy: async_pipeline
+    memory_path: async_pipeline
+    storage_policy: file_stream
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    tunables: [pipeline_streams, pipeline_chunk_elements, reuse_count]
+    role: out_of_core_single_gpu_overlap
 
   - id: gpu_multi_cub_equal
     label: Multi-GPU CUB equal partition
@@ -135,6 +272,35 @@ algorithms:
     min_gpus: 2
     role: multi_gpu_calibrated_baseline
 
+  - id: gpu_multi_cub_async
+    label: Multi-GPU CUB equal partition with pinned asynchronous pipelines
+    scheduler: gpu_static_equal
+    gpu_backend: cub
+    transfer_policy: async_pipeline
+    memory_path: async_pipeline
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: true
+    min_gpus: 2
+    tunables: [pipeline_streams, pipeline_chunks, pipeline_chunk_elements, reuse_count]
+    role: multi_gpu_transfer_overlap
+
+  - id: gpu_multi_cub_file_stream_async
+    label: Multi-GPU concurrent out-of-core file streaming
+    scheduler: gpu_static_equal
+    gpu_backend: cub
+    transfer_policy: async_pipeline
+    memory_path: async_pipeline
+    storage_policy: file_stream
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: true
+    min_gpus: 2
+    tunables: [pipeline_streams, pipeline_chunk_elements, reuse_count]
+    role: out_of_core_multi_gpu
+
   - id: hybrid_static_equal
     label: Hybrid static equal partition
     scheduler: static_equal
@@ -146,6 +312,20 @@ algorithms:
     uses_gpu: true
     supports_multi_gpu: true
     role: macro_baseline
+
+  - id: hybrid_static_equal_async
+    label: Hybrid static equal + pinned asynchronous GPU pipelines
+    scheduler: static_equal
+    cpu_backend: openmp_simd
+    gpu_backend: cub
+    transfer_policy: async_pipeline
+    memory_path: async_pipeline
+    requires_cuda: true
+    uses_cpu: true
+    uses_gpu: true
+    supports_multi_gpu: true
+    tunables: [pipeline_streams, pipeline_chunks, pipeline_chunk_elements]
+    role: hybrid_transfer_overlap
 
   - id: hybrid_static_profiled
     label: Hybrid static model-based partition
@@ -165,12 +345,28 @@ algorithms:
     cpu_backend: openmp_simd
     gpu_backend: cub
     transfer_policy: async_pipeline
+    memory_path: async_pipeline
     requires_cuda: true
     uses_cpu: true
     uses_gpu: true
     supports_multi_gpu: true
     tunables: [pipeline_streams, pipeline_chunks, pipeline_chunk_elements]
     role: transfer_overlap_variant
+
+  - id: hybrid_file_stream_equal
+    label: CPU + multi-GPU out-of-core file streaming
+    scheduler: static_equal
+    cpu_backend: openmp_simd
+    gpu_backend: cub
+    transfer_policy: async_pipeline
+    memory_path: async_pipeline
+    storage_policy: file_stream
+    requires_cuda: true
+    uses_cpu: true
+    uses_gpu: true
+    supports_multi_gpu: true
+    tunables: [pipeline_streams, pipeline_chunk_elements, cpu_fraction]
+    role: out_of_core_hybrid
 
   - id: hybrid_dynamic_fixed
     label: Hybrid centralized fixed-chunk queue
@@ -195,7 +391,7 @@ algorithms:
     uses_cpu: true
     uses_gpu: true
     supports_multi_gpu: true
-    tunables: [min_chunk_size, guided_factor]
+    tunables: [min_chunk_size, max_chunk_size, guided_factor]
     role: dynamic_guided
 
   - id: hybrid_dynamic_adaptive
@@ -210,3 +406,17 @@ algorithms:
     supports_multi_gpu: true
     tunables: [min_chunk_size, max_chunk_size, target_chunk_ms, ema_alpha]
     role: adaptive_scheduler
+
+  - id: gpu_cub_gds
+    label: CUB GPUDirect Storage reduction
+    scheduler: gpu_only
+    gpu_backend: cub
+    transfer_policy: sync
+    memory_path: gds
+    storage_policy: gds
+    requires_cuda: true
+    uses_cpu: false
+    uses_gpu: true
+    supports_multi_gpu: false
+    tunables: [chunk_size, reuse_count]
+    role: optional_gpudirect_storage
