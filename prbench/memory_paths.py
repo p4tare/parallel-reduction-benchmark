@@ -27,6 +27,7 @@ class MemoryPathStudyConfig(_Strict):
     output_dir: Path = Path("results/memory_paths")
     dataset_cache_dir: Path = Path(".prbench/datasets")
     worker: Path = Path("build/prbench-memory-path-worker")
+    file_stream_worker: Path = Path("build/prbench-file-stream-worker")
     datasets: list[DatasetSpec]
     operations: list[ReductionOperation] = Field(default_factory=lambda: [ReductionOperation.sum])
     modes: list[str] = Field(default_factory=lambda: [
@@ -48,7 +49,7 @@ class MemoryPathStudyConfig(_Strict):
     repetitions: int = Field(default=3, ge=1, le=100)
     blocks: int = Field(default=3, ge=1, le=100)
     randomization_seed: int = 20260916
-    max_dataset_ram_fraction: float = Field(default=0.70, gt=0.05, le=0.90)
+    host_resident_ram_fraction: float = Field(default=0.70, gt=0.05, le=0.95)
     include_device_resident_diagnostic: bool = True
     include_gpudirect_storage_probe: bool = True
 
@@ -62,11 +63,13 @@ class MemoryPathStudyConfig(_Strict):
         return value
 
     @model_validator(mode="after")
-    def _validate_graph_modes(self) -> "MemoryPathStudyConfig":
+    def _validate_graph_modes(self) -> MemoryPathStudyConfig:
         allowed = {"explicit_sync", "device_resident"}
         invalid = sorted(set(self.cuda_graph_modes) - allowed)
         if invalid:
-            raise ValueError(f"cuda_graph_modes currently support only {sorted(allowed)}; invalid={invalid}")
+            raise ValueError(
+                f"cuda_graph_modes currently support only {sorted(allowed)}; invalid={invalid}"
+            )
         return self
 
 
@@ -116,10 +119,7 @@ def gds_diagnostics() -> dict[str, Any]:
         "available_for_native_adapter": bool(
             libcufile and ("nvidia_fs " in modules or Path("/dev/nvidia-fs").exists())
         ),
-        "note": (
-            "GDS remains an out-of-core/storage experiment and is not mixed into "
-            "host-resident ranking."
-        ),
+        "note": "GDS is an out-of-core/storage path and is kept separate from host-resident ranking.",
     }
 
 
@@ -198,7 +198,7 @@ def build_tasks(cfg: MemoryPathStudyConfig) -> list[Task]:
     return tasks
 
 
-def run_worker(
+def _invoke_worker(
     worker: Path,
     artifact_path: Path,
     task: Task,
@@ -225,11 +225,7 @@ def run_worker(
         cmd.append("--cuda-graphs")
     completed = subprocess.run(cmd, text=True, capture_output=True, check=False)
     if completed.returncode != 0:
-        reason = (
-            completed.stderr.strip()
-            or completed.stdout.strip()
-            or f"exit={completed.returncode}"
-        )
+        reason = completed.stderr.strip() or completed.stdout.strip() or f"exit={completed.returncode}"
         lower = reason.lower()
         skip_tokens = (
             "unavailable",
@@ -256,12 +252,32 @@ def run_worker(
     return {"status": "ok", **payload, "command": cmd}
 
 
+def _dataset_bytes(ds: DatasetSpec) -> int:
+    return ds.size * {"int32": 4, "float32": 4, "int64": 8, "float64": 8}[ds.dtype.value]
+
+
+def _execution_policy(
+    task: Task,
+    dataset_bytes: int,
+    host_resident_limit: int,
+) -> tuple[str, str | None]:
+    if dataset_bytes <= host_resident_limit:
+        return "host_resident", None
+    if task.mode in {"chunked_sync", "async_pipeline"}:
+        return "file_stream", None
+    return (
+        "unsupported_out_of_core",
+        f"mode={task.mode} requires host-resident input; dataset exceeds host-resident budget",
+    )
+
+
 def _summary(rows: list[dict[str, Any]], path: Path) -> None:
     ok = [r for r in rows if r.get("status") == "ok" and r.get("is_correct") is True]
     fields = [
-        "dataset_bytes", "dtype", "operation", "mode", "gpu_id", "reuse_count",
-        "chunk_elements", "streams", "use_cuda_graphs", "mean_total_ms", "mean_h2d_ms",
-        "mean_kernel_ms", "mean_d2h_ms", "mean_h2d_bytes", "mean_remote_host_read_bytes",
+        "dataset_bytes", "storage_policy", "dtype", "operation", "mode", "gpu_id",
+        "reuse_count", "chunk_elements", "streams", "use_cuda_graphs", "mean_total_ms",
+        "mean_storage_read_ms", "mean_h2d_ms", "mean_kernel_ms", "mean_d2h_ms",
+        "mean_storage_read_bytes", "mean_h2d_bytes", "mean_remote_host_read_bytes",
         "is_correct", "absolute_error", "relative_error", "block",
     ]
     with path.open("w", newline="", encoding="utf-8") as fh:
@@ -272,14 +288,14 @@ def _summary(rows: list[dict[str, Any]], path: Path) -> None:
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
+    root = _project_root()
     report = {
         "host_ram_bytes": psutil.virtual_memory().total,
         "hmm": hmm_diagnostics(),
         "gpudirect_storage": gds_diagnostics(),
-        "memory_path_worker": str(
-            (_project_root() / "build/prbench-memory-path-worker").resolve()
-        ),
-        "gds_worker": str((_project_root() / "build/prbench-gds-worker").resolve()),
+        "memory_path_worker": str((root / "build/prbench-memory-path-worker").resolve()),
+        "file_stream_worker": str((root / "build/prbench-file-stream-worker").resolve()),
+        "gds_worker": str((root / "build/prbench-gds-worker").resolve()),
     }
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
@@ -289,46 +305,45 @@ def cmd_run(args: argparse.Namespace) -> int:
     root = _project_root()
     cfg = load_config(Path(args.config).resolve())
     worker = cfg.worker if cfg.worker.is_absolute() else root / cfg.worker
+    file_worker = (
+        cfg.file_stream_worker
+        if cfg.file_stream_worker.is_absolute()
+        else root / cfg.file_stream_worker
+    )
     if not worker.exists():
-        raise SystemExit(
-            f"memory path worker not found: {worker}; build the branch with CUDA first"
-        )
+        raise SystemExit(f"memory path worker not found: {worker}; build the branch with CUDA first")
+    if not file_worker.exists():
+        raise SystemExit(f"file stream worker not found: {file_worker}; build the branch with CUDA first")
+
     output = cfg.output_dir if cfg.output_dir.is_absolute() else root / cfg.output_dir
     output.mkdir(parents=True, exist_ok=True)
     dataset_factory = DatasetFactory(
-        cfg.dataset_cache_dir
-        if cfg.dataset_cache_dir.is_absolute()
-        else root / cfg.dataset_cache_dir
+        cfg.dataset_cache_dir if cfg.dataset_cache_dir.is_absolute() else root / cfg.dataset_cache_dir
     )
     validator = ResultValidator()
     ram = psutil.virtual_memory().total
+    host_resident_limit = int(ram * cfg.host_resident_ram_fraction)
+
     artifacts: dict[str, Any] = {}
     for ds in cfg.datasets:
-        bytes_ = ds.size * {
-            "int32": 4,
-            "float32": 4,
-            "int64": 8,
-            "float64": 8,
-        }[ds.dtype.value]
-        if bytes_ > ram * cfg.max_dataset_ram_fraction:
-            raise MemoryError(
-                f"dataset {bytes_} B exceeds configured host-RAM fraction "
-                f"{cfg.max_dataset_ram_fraction:.1%}"
-            )
         key = json.dumps(ds.model_dump(mode="json"), sort_keys=True)
         artifacts[key] = dataset_factory.get_or_create(ds)
 
     manifest = {
-        "schema": 3,
+        "schema": 4,
         "config": cfg.model_dump(mode="json"),
         "host_ram_bytes": ram,
+        "host_resident_limit_bytes": host_resident_limit,
         "hmm": hmm_diagnostics(),
-        "gpudirect_storage": (
-            gds_diagnostics() if cfg.include_gpudirect_storage_probe else None
-        ),
+        "gpudirect_storage": gds_diagnostics() if cfg.include_gpudirect_storage_probe else None,
+        "storage_policies": {
+            "host_resident": "whole input is resident in system RAM before timing",
+            "file_stream": "bounded pinned host buffers stream from dataset file to GPU",
+            "unsupported_out_of_core": "mode requires whole host-resident input and is skipped",
+        },
         "note": (
-            "Host-resident memory-path study. GPUDirect Storage is diagnosed separately "
-            "and excluded from this ranking."
+            "There is no global dataset<=RAM restriction. Host-resident and out-of-core "
+            "results are tagged separately and must not be pooled into one ranking."
         ),
     }
     (output / "memory_path_manifest.json").write_text(
@@ -342,15 +357,23 @@ def cmd_run(args: argparse.Namespace) -> int:
             key = json.dumps(task.dataset.model_dump(mode="json"), sort_keys=True)
             artifact = artifacts[key]
             dataset_bytes = int(artifact.metadata["size_bytes"])
-            result = run_worker(
-                worker,
-                artifact.data_path,
-                task,
-                task.dataset.size,
-                task.dataset.dtype.value,
-                cfg.warmup,
-                cfg.repetitions,
+            storage_policy, skip_reason = _execution_policy(
+                task, dataset_bytes, host_resident_limit
             )
+            if skip_reason is not None:
+                result: dict[str, Any] = {"status": "skipped", "reason": skip_reason}
+            else:
+                selected_worker = file_worker if storage_policy == "file_stream" else worker
+                result = _invoke_worker(
+                    selected_worker,
+                    artifact.data_path,
+                    task,
+                    task.dataset.size,
+                    task.dataset.dtype.value,
+                    cfg.warmup,
+                    cfg.repetitions,
+                )
+
             validation_payload: dict[str, Any] = {}
             status = result.get("status", "failed")
             if status == "ok" and "result" in result:
@@ -371,12 +394,14 @@ def cmd_run(args: argparse.Namespace) -> int:
                 }
                 if not validation.is_correct:
                     status = "invalid"
+
             row = {
                 "sequence_index": index,
                 "block": task.block,
                 "dataset": task.dataset.model_dump(mode="json"),
                 "dataset_bytes": dataset_bytes,
                 "dataset_sha256": artifact.metadata["sha256"],
+                "storage_policy": storage_policy,
                 "dtype": task.dataset.dtype.value,
                 "operation": task.operation.value,
                 "mode": task.mode,
@@ -393,8 +418,9 @@ def cmd_run(args: argparse.Namespace) -> int:
             fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
             fh.flush()
             print(
-                f"[{index + 1}] block={task.block} mode={task.mode} gpu={task.gpu_id} "
-                f"N={task.dataset.size} reuse={task.reuse_count}: {row['status']}",
+                f"[{index + 1}] block={task.block} policy={storage_policy} "
+                f"mode={task.mode} gpu={task.gpu_id} N={task.dataset.size} "
+                f"reuse={task.reuse_count}: {row['status']}",
                 flush=True,
             )
     _summary(rows, output / "memory_path_summary.csv")
@@ -404,9 +430,9 @@ def cmd_run(args: argparse.Namespace) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(prog="prbench-memory-paths")
     sub = parser.add_subparsers(dest="command", required=True)
-    doctor = sub.add_parser("doctor", help="report HMM/GDS prerequisites")
+    doctor = sub.add_parser("doctor", help="report HMM/GDS and worker prerequisites")
     doctor.set_defaults(func=cmd_doctor)
-    run = sub.add_parser("run", help="run host-resident GPU memory-path study")
+    run = sub.add_parser("run", help="run host-resident and out-of-core GPU memory-path study")
     run.add_argument("config")
     run.set_defaults(func=cmd_run)
     args = parser.parse_args()
