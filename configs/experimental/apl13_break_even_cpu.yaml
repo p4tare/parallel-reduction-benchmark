@@ -1,0 +1,71 @@
+# EXPERIMENTAL ONLY. Matching CPU baseline for apl13_break_even_tuning.yaml.
+# Use the existing validated prbench runner; do not mix these tuning results with final data.
+output_dir: results
+dataset_cache_dir: .prbench/datasets
+
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: "on"
+
+measurement:
+  warmup_runs: 2
+  scheduler_calibration_repetitions: 3
+  scheduler_calibration_bursts: 1
+  timing_repetitions: auto
+  timing_probe_repetitions: 3
+  timing_target_batch_seconds: 3.0
+  timing_min_repetitions: 3
+  timing_max_repetitions: 15
+  cache_rotation_target_bytes: 268435456
+  cache_rotation_max_replicas: 8
+  energy_batch_repetitions: auto
+  energy_target_batch_seconds: 5.0
+  energy_min_repetitions: 1
+  energy_max_repetitions: 5
+  blocks: 3
+  randomization_seed: 20260916
+  max_dataset_ram_fraction: 0.70
+  gpu_memory_safety_fraction: 0.80
+  thermal_safety_gpu_c: 85
+  thermal_safety_cpu_c: 95
+  thermal_wait_timeout_s: 300
+  worker_event_timeout_s: 3600
+  strict_preflight: true
+  max_preflight_cpu_load_percent: 5.0
+  allow_gpu_graphics_processes: false
+
+energy:
+  enable_cpu: true
+  enable_gpu: false
+  gpu_power_fallback_poll_ms: 50
+
+telemetry:
+  enabled: true
+  capture_cpu_frequency: true
+  capture_cpu_temperature: true
+  capture_gpu_state: false
+  capture_pre_post_timing: true
+  capture_pre_post_energy: true
+
+experiments:
+  - id: break_even_cpu_host_resident
+    operations: [sum]
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each]
+      memory_policy: interleave
+    algorithms:
+      - id: cpu_omp_simd
+    datasets:
+      - {size: 268435456, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 1073741824, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 4294967296, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 8589934592, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 12884901888, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 17179869184, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 21474836480, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 25769803776, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - {size: 30064771072, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
