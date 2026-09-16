@@ -3,8 +3,11 @@
 output_dir: results/memory_paths_smoke
 dataset_cache_dir: .prbench/datasets
 worker: build/prbench-memory-path-worker
+file_stream_worker: build/prbench-file-stream-worker
 
-max_dataset_ram_fraction: 0.70
+# This is now only the boundary for choosing host-resident vs file-stream execution.
+# It is NOT a maximum allowed dataset size.
+host_resident_ram_fraction: 0.70
 warmup: 1
 repetitions: 2
 blocks: 1
