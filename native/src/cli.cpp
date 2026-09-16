@@ -50,7 +50,10 @@ WorkerConfig parse_cli(int argc, char** argv) {
         else if (arg == "--cpu-backend") cfg.cpu_backend = parse_cpu_backend(require_value(i, argc, argv, arg));
         else if (arg == "--gpu-backend") cfg.gpu_backend = parse_gpu_backend(require_value(i, argc, argv, arg));
         else if (arg == "--transfer-policy") cfg.transfer_policy = parse_transfer_policy(require_value(i, argc, argv, arg));
+        else if (arg == "--memory-path") cfg.memory_path = require_value(i, argc, argv, arg);
+        else if (arg == "--storage-policy") cfg.storage_policy = require_value(i, argc, argv, arg);
         else if (arg == "--gpus") cfg.gpu_ids = parse_int_list(require_value(i, argc, argv, arg));
+        else if (arg == "--gpu-numa-nodes") cfg.gpu_numa_nodes = parse_int_list(require_value(i, argc, argv, arg));
         else if (arg == "--cpu-affinity") cfg.cpu_affinity = parse_int_list(require_value(i, argc, argv, arg));
         else if (arg == "--gpu-worker-cpus") cfg.gpu_worker_cpus = parse_int_list(require_value(i, argc, argv, arg));
         else if (arg == "--cpu-threads") cfg.cpu_threads = std::stoi(require_value(i, argc, argv, arg));
@@ -69,6 +72,9 @@ WorkerConfig parse_cli(int argc, char** argv) {
         else if (arg == "--pipeline-streams") cfg.pipeline_streams = std::stoi(require_value(i, argc, argv, arg));
         else if (arg == "--pipeline-chunks") cfg.pipeline_chunks = std::stoi(require_value(i, argc, argv, arg));
         else if (arg == "--pipeline-chunk-elements") cfg.pipeline_chunk_elements = std::stoull(require_value(i, argc, argv, arg));
+        else if (arg == "--reuse-count") cfg.reuse_count = std::stoi(require_value(i, argc, argv, arg));
+        else if (arg == "--cpu-fraction") cfg.cpu_fraction = std::stod(require_value(i, argc, argv, arg));
+        else if (arg == "--cuda-graphs") cfg.use_cuda_graphs = true;
         else throw std::invalid_argument("unknown argument: " + arg);
     }
 
@@ -103,6 +109,14 @@ WorkerConfig parse_cli(int argc, char** argv) {
     }
     if (cfg.guided_factor <= 0.0 || cfg.target_chunk_ms <= 0.0) {
         throw std::invalid_argument("guided_factor and target_chunk_ms must be positive");
+    }
+    if (cfg.reuse_count < 1) throw std::invalid_argument("--reuse-count must be positive");
+    if (cfg.cpu_fraction >= 1.0) throw std::invalid_argument("--cpu-fraction must be smaller than 1");
+    if (cfg.storage_policy != "host_resident" && cfg.storage_policy != "file_stream" && cfg.storage_policy != "gds") {
+        throw std::invalid_argument("--storage-policy must be host_resident, file_stream or gds");
+    }
+    if (!cfg.gpu_numa_nodes.empty() && cfg.gpu_numa_nodes.size() != cfg.gpu_ids.size()) {
+        throw std::invalid_argument("--gpu-numa-nodes must match --gpus length");
     }
     return cfg;
 }
