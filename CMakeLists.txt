@@ -25,10 +25,6 @@ if(PRBENCH_ENABLE_CUDA)
     include(CheckLanguage)
     check_language(CUDA)
     if(CMAKE_CUDA_COMPILER)
-        # prbench mixes C++ translation units and CUDA translation units in the same
-        # executable. Using a different libstdc++/C++ ABI for NVCC's host side can
-        # therefore produce late linker failures such as an unresolved
-        # __cxa_call_terminate. Keep both sides on the exact same compiler.
         if(DEFINED CMAKE_CUDA_HOST_COMPILER AND NOT CMAKE_CUDA_HOST_COMPILER STREQUAL "")
             get_filename_component(PRBENCH_CXX_COMPILER_REAL "${CMAKE_CXX_COMPILER}" REALPATH)
             get_filename_component(PRBENCH_CUDA_HOST_COMPILER_REAL "${CMAKE_CUDA_HOST_COMPILER}" REALPATH)
@@ -89,8 +85,6 @@ if(PRBENCH_HAS_CUDA)
     target_compile_definitions(prbench-worker PRIVATE PRBENCH_HAS_CUDA=1)
     target_compile_options(prbench-worker PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-O3;-lineinfo>)
 
-    # Experimental worker used by the GPU break-even branch. It deliberately keeps
-    # reduction backend fixed at CUB while changing only the data-access/memory policy.
     add_executable(prbench-memory-path-worker native/src/memory_path_worker.cu)
     set_target_properties(prbench-memory-path-worker PROPERTIES
         CUDA_STANDARD 17
@@ -98,6 +92,14 @@ if(PRBENCH_HAS_CUDA)
     )
     target_link_libraries(prbench-memory-path-worker PRIVATE CUDA::cudart)
     target_compile_options(prbench-memory-path-worker PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-O3;-lineinfo>)
+
+    add_executable(prbench-file-stream-worker native/src/file_stream_worker.cu)
+    set_target_properties(prbench-file-stream-worker PROPERTIES
+        CUDA_STANDARD 17
+        CUDA_STANDARD_REQUIRED ON
+    )
+    target_link_libraries(prbench-file-stream-worker PRIVATE CUDA::cudart)
+    target_compile_options(prbench-file-stream-worker PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-O3;-lineinfo>)
 
     if(PRBENCH_ENABLE_GDS)
         find_path(PRBENCH_CUFILE_INCLUDE_DIR cufile.h
