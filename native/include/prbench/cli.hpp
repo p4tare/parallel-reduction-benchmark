@@ -20,6 +20,7 @@ struct WorkerConfig {
     TransferPolicy transfer_policy{TransferPolicy::Sync};
     std::string memory_path{"default"};
     std::string storage_policy{"host_resident"};
+    std::string gpu_staging_numa{"auto"};
     std::vector<int> gpu_ids;
     std::vector<int> gpu_numa_nodes;
     std::vector<int> cpu_affinity;
