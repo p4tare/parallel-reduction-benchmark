@@ -5,7 +5,7 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -31,6 +31,8 @@ class DatasetArtifact:
 
 
 DATASET_SCHEMA_VERSION = 4
+ProgressCallback = Callable[[int, int], None]
+
 
 def _canonical_spec(spec: DatasetSpec) -> str:
     payload = {"schema_version": DATASET_SCHEMA_VERSION, "spec": spec.model_dump(mode="json")}
@@ -64,29 +66,54 @@ def _validate_integer_sum_bound(spec: DatasetSpec) -> None:
 
 
 class DatasetFactory:
-    """Deterministic, cached dataset generation with reference metadata and content hashes."""
+    """Deterministic, cached chunked dataset generation with reference metadata."""
 
     def __init__(self, cache_dir: Path, chunk_elements: int = 8_000_000) -> None:
         self.cache_dir = cache_dir
         self.chunk_elements = chunk_elements
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def get_or_create(self, spec: DatasetSpec) -> DatasetArtifact:
-        _validate_integer_sum_bound(spec)
+    def cache_paths(self, spec: DatasetSpec) -> tuple[Path, Path]:
         key = hashlib.sha256(_canonical_spec(spec).encode("utf-8")).hexdigest()[:20]
-        data_path = self.cache_dir / f"dataset_{key}.bin"
-        metadata_path = self.cache_dir / f"dataset_{key}.json"
-        if data_path.exists() and metadata_path.exists():
-            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            expected_bytes = spec.size * NP_DTYPES[spec.dtype].itemsize
-            if (
-                data_path.stat().st_size == expected_bytes
-                and metadata.get("spec") == spec.model_dump(mode="json")
-                and metadata.get("schema_version") == DATASET_SCHEMA_VERSION
-                and all(key in metadata for key in ("reference_sum", "reference_min", "reference_max", "sum_abs"))
-            ):
-                return DatasetArtifact(data_path.resolve(), metadata_path.resolve(), metadata)
+        return (
+            self.cache_dir / f"dataset_{key}.bin",
+            self.cache_dir / f"dataset_{key}.json",
+        )
 
+    def cached_artifact(self, spec: DatasetSpec) -> DatasetArtifact | None:
+        data_path, metadata_path = self.cache_paths(spec)
+        if not data_path.exists() or not metadata_path.exists():
+            return None
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        expected_bytes = spec.size * NP_DTYPES[spec.dtype].itemsize
+        if (
+            data_path.stat().st_size == expected_bytes
+            and metadata.get("spec") == spec.model_dump(mode="json")
+            and metadata.get("schema_version") == DATASET_SCHEMA_VERSION
+            and all(
+                key in metadata
+                for key in ("reference_sum", "reference_min", "reference_max", "sum_abs")
+            )
+        ):
+            return DatasetArtifact(data_path.resolve(), metadata_path.resolve(), metadata)
+        return None
+
+    def get_or_create(
+        self,
+        spec: DatasetSpec,
+        progress: ProgressCallback | None = None,
+    ) -> DatasetArtifact:
+        _validate_integer_sum_bound(spec)
+        cached = self.cached_artifact(spec)
+        if cached is not None:
+            if progress is not None:
+                progress(spec.size, spec.size)
+            return cached
+
+        data_path, metadata_path = self.cache_paths(spec)
         tmp = data_path.with_suffix(".tmp")
         if tmp.exists():
             tmp.unlink()
@@ -100,6 +127,8 @@ class DatasetFactory:
         reference_min: int | float | None = None
         reference_max: int | float | None = None
         written = 0
+        if progress is not None:
+            progress(0, spec.size)
 
         with tmp.open("wb") as fh:
             while written < spec.size:
@@ -110,10 +139,11 @@ class DatasetFactory:
                 sha.update(raw)
 
                 if spec.dtype in {DType.int32, DType.int64}:
-                    # Safe because _validate_integer_sum_bound guarantees int64 range.
                     chunk_sum = int(np.sum(data, dtype=np.int64))
                     int_reference += chunk_sum
-                    sum_abs += np.longdouble(np.sum(np.abs(data.astype(np.int64)), dtype=np.int64))
+                    sum_abs += np.longdouble(
+                        np.sum(np.abs(data.astype(np.int64)), dtype=np.int64)
+                    )
                     chunk_min = int(np.min(data))
                     chunk_max = int(np.max(data))
                 else:
@@ -124,6 +154,8 @@ class DatasetFactory:
                 reference_min = chunk_min if reference_min is None else min(reference_min, chunk_min)
                 reference_max = chunk_max if reference_max is None else max(reference_max, chunk_max)
                 written += count
+                if progress is not None:
+                    progress(written, spec.size)
 
         tmp.replace(data_path)
         reference_value: int | float
@@ -156,7 +188,9 @@ class DatasetFactory:
             "reference_method": reference_method,
             "numpy_longdouble_bits": int(np.finfo(np.longdouble).nmant + 1),
         }
-        metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+        metadata_path.write_text(
+            json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8"
+        )
         return DatasetArtifact(data_path.resolve(), metadata_path.resolve(), metadata)
 
     def _generate_chunk(
