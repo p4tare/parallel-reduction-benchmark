@@ -43,13 +43,11 @@ def _param(task: Any, name: str, default: int) -> int:
 
 
 def gpu_input_allocation_estimates(task: Any) -> dict[int, dict[str, Any]]:
-    """Estimate the dominant input allocation made by each selected GPU reducer.
+    """Estimate dominant per-GPU input allocations for preflight.
 
-    `exact` means the strategy's configured reducer capacity is known before execution.
-    `upper_bound` is conservative (not an OOM proof if exceeded), and `reference` is only
-    a useful equal-share reference for a profiler whose final partition is data-dependent.
-    CUB scratch/context allocations are deliberately covered by the configurable safety
-    headroom rather than guessed here.
+    The estimate follows the physical memory path, not merely the scheduler. In
+    particular, mapped/HMM input is host memory, Managed Memory is migration-backed,
+    and file-stream/chunked execution allocates only bounded device chunks.
     """
     if not task.gpu_ids:
         return {}
@@ -58,6 +56,28 @@ def gpu_input_allocation_estimates(task: Any) -> dict[int, dict[str, Any]]:
     g = len(task.gpu_ids)
     scheduler = str(task.algorithm.scheduler)
     transfer = str(task.algorithm.transfer_policy or "sync")
+    memory_path = str(task.algorithm.memory_path or "default")
+    storage = str(task.algorithm.storage_policy)
+
+    # GPU reads ordinary/mapped/managed host/system memory rather than allocating a
+    # full explicit input buffer. CUB scratch/output remains covered by safety headroom.
+    if memory_path in {"zero_copy", "hmm_system", "managed_fault", "managed_prefetch", "managed_advised"}:
+        return {
+            gpu: {"input_bytes": 0, "kind": "managed_or_host_mapped", "elements": n}
+            for gpu in task.gpu_ids
+        }
+
+    if storage in {"file_stream", "gds"} or memory_path in {"chunked_sync", "pinned_direct"}:
+        chunk = _param(task, "pipeline_chunk_elements", 0) if transfer == "async_pipeline" else 0
+        if chunk <= 0:
+            chunk = _param(task, "chunk_size", 1 << 20)
+        streams = _param(task, "pipeline_streams", 4) if transfer == "async_pipeline" else 1
+        # Ranges are disjoint, but every GPU owns the same bounded pipeline capacity.
+        elements = min(n, chunk) * streams
+        return {
+            gpu: {"input_bytes": elements * item, "kind": "exact", "elements": elements}
+            for gpu in task.gpu_ids
+        }
 
     if scheduler == "gpu_only":
         if transfer == "async_pipeline":
@@ -73,8 +93,15 @@ def gpu_input_allocation_estimates(task: Any) -> dict[int, dict[str, Any]]:
         return {gpu: {"input_bytes": elements * item, "kind": "exact", "elements": elements} for gpu in task.gpu_ids}
 
     if scheduler == "gpu_static_equal":
-        # equal_partition differs by at most one element
         elements = math.ceil(n / g)
+        if transfer == "async_pipeline":
+            streams = _param(task, "pipeline_streams", 4)
+            chunk_elements = _param(task, "pipeline_chunk_elements", 0)
+            if chunk_elements > 0:
+                elements = min(elements, chunk_elements) * streams
+            else:
+                chunks = _param(task, "pipeline_chunks", 16)
+                elements = math.ceil(elements / chunks) * streams
         return {gpu: {"input_bytes": elements * item, "kind": "exact", "elements": elements} for gpu in task.gpu_ids}
 
     if scheduler == "gpu_static_profiled":
@@ -96,8 +123,6 @@ def gpu_input_allocation_estimates(task: Any) -> dict[int, dict[str, Any]]:
 
     if scheduler == "static_profiled":
         if transfer == "async_pipeline":
-            # Worst-case GPU range is the whole dataset. With fixed chunk elements the
-            # staging/device allocation is bounded independently of total N.
             streams = _param(task, "pipeline_streams", 4)
             chunk_elements = _param(task, "pipeline_chunk_elements", 0)
             if chunk_elements > 0:
@@ -133,6 +158,8 @@ def gpu_capacity_rows(task: Any, topology: SystemTopologyModel, safety_fraction:
         rows.append({
             "task_key": task.task_key,
             "algorithm_id": task.algorithm.id,
+            "memory_path": task.algorithm.memory_path,
+            "storage_policy": task.algorithm.storage_policy,
             "gpu_id": gpu_id,
             "gpu_name": gpu.name,
             "estimate_kind": estimate["kind"],
