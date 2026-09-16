@@ -136,7 +136,7 @@ class SweepPlanner:
         for raw in group.hardware.gpu_sets:
             if raw == "each":
                 resolved.extend([[gpu] for gpu in available])
-            elif raw in {"pairs", "all_pairs"}:
+            elif isinstance(raw, str) and raw in {"pairs", "all_pairs"}:
                 if not definition.supports_multi_gpu:
                     raise ValueError(f"algorithm {definition.id} does not support gpu_sets={raw!r}")
                 resolved.extend([list(pair) for pair in itertools.combinations(available, 2)])
