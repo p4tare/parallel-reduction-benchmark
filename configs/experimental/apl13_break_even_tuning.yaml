@@ -1,11 +1,14 @@
 # EXPERIMENTAL ONLY. Do not treat as final thesis data.
-# Purpose: find asymptotic host-resident CPU/GPU break-even and tune transfer chunk sizes.
+# Purpose: find CPU/GPU break-even and tune transfer/storage paths.
 # Run only after memory_paths_smoke.yaml passes on apl13.
 output_dir: results/apl13_break_even_tuning
 dataset_cache_dir: .prbench/datasets
 worker: build/prbench-memory-path-worker
+file_stream_worker: build/prbench-file-stream-worker
 
-max_dataset_ram_fraction: 0.70
+# Boundary for host-resident execution only; datasets above it are not rejected.
+# chunked_sync/async_pipeline switch to file_stream and are tagged separately.
+host_resident_ram_fraction: 0.70
 warmup: 1
 repetitions: 3
 blocks: 3
@@ -30,7 +33,8 @@ modes:
   - managed_advised
   - hmm_system
 
-# Geometric size sweep. All datasets remain host-resident; sizes beyond VRAM test streaming/UM.
+# Geometric size sweep through and beyond one-GPU VRAM.
+# Host-resident and file-stream results are never pooled into one ranking.
 # float32 element counts correspond to 1, 4, 16, 32, 48, 64, 80, 96, 112 GiB.
 datasets:
   - {size: 268435456, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
