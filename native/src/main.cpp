@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -19,6 +20,7 @@
 #include "prbench/cpu_backend.hpp"
 #include "prbench/dataset.hpp"
 #include "prbench/gpu_backend.hpp"
+#include "prbench/integrated_strategy.hpp"
 #include "prbench/metrics.hpp"
 #include "prbench/strategy.hpp"
 
@@ -86,20 +88,41 @@ void emit_result(std::size_t iteration, const IterationMetrics& m, const prbench
     double gpu_kernel_sum = 0.0;
     double gpu_h2d_sum = 0.0;
     double gpu_d2h_sum = 0.0;
+    double gpu_storage_read_sum = 0.0;
+    double gpu_host_staging_sum = 0.0;
     double gpu_total_max = 0.0;
     std::size_t gpu_elements_total = 0;
+    std::uint64_t gpu_storage_read_bytes = 0;
+    std::uint64_t gpu_h2d_bytes = 0;
+    std::uint64_t gpu_d2h_bytes = 0;
+    std::uint64_t gpu_remote_host_read_bytes = 0;
+    bool numa_requested = false;
+    bool numa_applied = false;
     for (const auto& d : m.gpus) {
         gpu_kernel_sum += d.kernel_us;
         gpu_h2d_sum += d.h2d_us;
         gpu_d2h_sum += d.d2h_us;
+        gpu_storage_read_sum += d.storage_read_us;
+        gpu_host_staging_sum += d.host_staging_us;
         gpu_total_max = std::max(gpu_total_max, d.total_us);
         gpu_elements_total += d.elements;
+        gpu_storage_read_bytes += d.storage_read_bytes;
+        gpu_h2d_bytes += d.h2d_bytes;
+        gpu_d2h_bytes += d.d2h_bytes;
+        gpu_remote_host_read_bytes += d.remote_host_read_bytes;
+        numa_requested = numa_requested || d.numa_requested;
+        numa_applied = numa_applied || d.numa_applied;
     }
 
     std::cout << "{\"event\":\"result\",\"iteration\":" << iteration
               << ",\"result\":" << m.result.json_literal()
               << ",\"e2e_us\":" << m.e2e_us
+              << ",\"logical_reductions\":" << cfg.reuse_count
+              << ",\"memory_path\":\"" << json_escape(cfg.memory_path) << "\""
+              << ",\"storage_policy\":\"" << json_escape(cfg.storage_policy) << "\""
               << ",\"cpu_compute_us\":" << m.cpu.compute_us
+              << ",\"cpu_storage_read_us\":" << m.cpu.storage_read_us
+              << ",\"cpu_storage_read_bytes\":" << m.cpu.storage_read_bytes
               << ",\"cpu_chunks\":" << m.cpu.chunks
               << ",\"cpu_elements\":" << m.cpu.elements
               << ",\"gpu_elements_total\":" << gpu_elements_total
@@ -108,7 +131,16 @@ void emit_result(std::size_t iteration, const IterationMetrics& m, const prbench
               << ",\"gpu_kernel_sum_us\":" << gpu_kernel_sum
               << ",\"gpu_h2d_sum_us\":" << gpu_h2d_sum
               << ",\"gpu_d2h_sum_us\":" << gpu_d2h_sum
+              << ",\"gpu_storage_read_sum_us\":" << gpu_storage_read_sum
+              << ",\"gpu_host_staging_sum_us\":" << gpu_host_staging_sum
+              << ",\"gpu_storage_read_bytes\":" << gpu_storage_read_bytes
+              << ",\"gpu_h2d_bytes\":" << gpu_h2d_bytes
+              << ",\"gpu_d2h_bytes\":" << gpu_d2h_bytes
+              << ",\"gpu_remote_host_read_bytes\":" << gpu_remote_host_read_bytes
               << ",\"gpu_total_max_us\":" << gpu_total_max
+              << ",\"numa_requested\":" << (numa_requested ? "true" : "false")
+              << ",\"numa_applied\":" << (numa_applied ? "true" : "false")
+              << ",\"cuda_graphs_used\":" << (cfg.use_cuda_graphs ? "true" : "false")
               << ",\"gpu_metrics\":[";
     for (std::size_t i = 0; i < m.gpus.size(); ++i) {
         const auto& d = m.gpus[i];
@@ -116,8 +148,16 @@ void emit_result(std::size_t iteration, const IterationMetrics& m, const prbench
                   << ",\"h2d_us\":" << d.h2d_us
                   << ",\"kernel_us\":" << d.kernel_us
                   << ",\"d2h_us\":" << d.d2h_us
+                  << ",\"storage_read_us\":" << d.storage_read_us
+                  << ",\"host_staging_us\":" << d.host_staging_us
+                  << ",\"storage_read_bytes\":" << d.storage_read_bytes
+                  << ",\"h2d_bytes\":" << d.h2d_bytes
+                  << ",\"d2h_bytes\":" << d.d2h_bytes
+                  << ",\"remote_host_read_bytes\":" << d.remote_host_read_bytes
                   << ",\"device_overhead_us\":" << d.device_overhead_us
                   << ",\"total_us\":" << d.total_us
+                  << ",\"numa_requested\":" << (d.numa_requested ? "true" : "false")
+                  << ",\"numa_applied\":" << (d.numa_applied ? "true" : "false")
                   << ",\"chunks\":" << d.chunks
                   << ",\"elements\":" << d.elements << "}";
         if (i + 1 != m.gpus.size()) std::cout << ',';
@@ -213,10 +253,6 @@ int self_test() {
     );
     if (std::get<std::int64_t>(omp_max.result.storage) != 5) return 6;
 #endif
-    // Regression coverage for the dynamic scheduler capacity bug discovered on
-    // a real CUDA server: fixed/guided scheduling must not run the adaptive
-    // throughput calibration, while adaptive calibration must never exceed its
-    // configured maximum chunk size.
     if (prbench::dynamic_calibration_elements(
             prbench::SchedulerKind::DynamicFixed, 1'000'000, 65'536, 16'777'216) != 0) return 7;
     if (prbench::dynamic_calibration_elements(
@@ -242,17 +278,11 @@ int main(int argc, char** argv) {
         }
         if (cfg.probe_cpu_types) return probe_cpu_types(cfg.probe_cpus);
 
-        // The process-level affinity defines the CPU compute pool for OpenMP strategies.
-        // A sequential CPU baseline is pinned to one processing unit to prevent migration
-        // between cores. GPU-only runs pin the host control thread near the selected GPU
-        // whenever the orchestrator supplied a locality-aware control CPU.
         if (cfg.scheduler == prbench::SchedulerKind::CpuOnly &&
             cfg.cpu_backend == prbench::CpuBackendKind::Sequential &&
             !cfg.cpu_affinity.empty()) {
             prbench::pin_current_thread(cfg.cpu_affinity.front());
         } else if (cfg.cpu_affinity.empty() && !cfg.gpu_worker_cpus.empty()) {
-            // GPU-only and pure multi-GPU schedulers have no CPU compute pool.  Keep the
-            // orchestration/merge thread on a deterministic topology-local control core.
             prbench::pin_current_thread(cfg.gpu_worker_cpus.front());
         } else if (!cfg.cpu_affinity.empty()) {
             prbench::pin_current_thread(cfg.cpu_affinity);
@@ -265,15 +295,31 @@ int main(int argc, char** argv) {
             return 0;
         }
 
-        prbench::Dataset dataset(
-            cfg.dataset_path,
-            cfg.count,
-            cfg.dtype,
-            cfg.cache_rotation_target_bytes,
-            cfg.cache_rotation_max_replicas
-        );
+        const bool integrated = prbench::uses_integrated_strategy(cfg);
+        if (integrated) {
+            const std::string reason = prbench::integrated_unsupported_reason(cfg);
+            if (!reason.empty()) {
+                std::cout << "{\"event\":\"unsupported\",\"reason\":\""
+                          << json_escape(reason) << "\"}" << std::endl;
+                return 0;
+            }
+        }
+
+        std::unique_ptr<prbench::Dataset> dataset;
         const auto create_start = std::chrono::steady_clock::now();
-        auto strategy = prbench::make_strategy(cfg, dataset);
+        std::unique_ptr<prbench::IReductionStrategy> strategy;
+        if (integrated) {
+            strategy = prbench::make_integrated_strategy(cfg);
+        } else {
+            dataset = std::make_unique<prbench::Dataset>(
+                cfg.dataset_path,
+                cfg.count,
+                cfg.dtype,
+                cfg.cache_rotation_target_bytes,
+                cfg.cache_rotation_max_replicas
+            );
+            strategy = prbench::make_strategy(cfg, *dataset);
+        }
         const auto create_end = std::chrono::steady_clock::now();
         const auto prepare_start = std::chrono::steady_clock::now();
         strategy->prepare(cfg.warmup_runs);
@@ -282,13 +328,20 @@ int main(int argc, char** argv) {
             std::chrono::duration<double, std::micro>(create_end - create_start).count();
         const double prepare_us =
             std::chrono::duration<double, std::micro>(prepare_end - prepare_start).count();
+        const std::size_t reported_replicas = dataset ? dataset->replica_count() : 1;
+        const std::size_t reported_resident_bytes = dataset
+            ? dataset->resident_bytes()
+            : (cfg.storage_policy == "host_resident" ? cfg.count * prbench::data_type_size(cfg.dtype) : 0);
 
         std::cout << "{\"event\":\"ready\",\"warmup_median_us\":"
                   << strategy->warmup_median_us()
                   << ",\"strategy_create_us\":" << strategy_create_us
                   << ",\"prepare_us\":" << prepare_us
-                  << ",\"dataset_replica_count\":" << dataset.replica_count()
-                  << ",\"dataset_resident_bytes\":" << dataset.resident_bytes()
+                  << ",\"dataset_replica_count\":" << reported_replicas
+                  << ",\"dataset_resident_bytes\":" << reported_resident_bytes
+                  << ",\"memory_path\":\"" << json_escape(cfg.memory_path) << "\""
+                  << ",\"storage_policy\":\"" << json_escape(cfg.storage_policy) << "\""
+                  << ",\"reuse_count\":" << cfg.reuse_count
                   << ",";
         emit_prepare_metrics(strategy->prepare_metrics());
         std::cout << "}" << std::endl;
@@ -324,9 +377,7 @@ int main(int argc, char** argv) {
         std::vector<prbench::IterationMetrics> metrics;
         metrics.reserve(timing_repetitions);
         const auto timing_start = std::chrono::steady_clock::now();
-        for (std::size_t i = 0; i < timing_repetitions; ++i) {
-            metrics.push_back(strategy->run_once());
-        }
+        for (std::size_t i = 0; i < timing_repetitions; ++i) metrics.push_back(strategy->run_once());
         const auto timing_end = std::chrono::steady_clock::now();
         const double timing_wall_us =
             std::chrono::duration<double, std::micro>(timing_end - timing_start).count();
@@ -340,10 +391,7 @@ int main(int argc, char** argv) {
         }
 
         std::size_t energy_repetitions = 0;
-        if (command == "DUMP") {
-            // Timing-only runs (for example parameter tuning) intentionally skip the
-            // additional energy batch.  This avoids unnecessary work and thermal load.
-        } else {
+        if (command != "DUMP") {
             std::istringstream energy_cmd(command);
             energy_cmd >> verb >> energy_repetitions;
             if (verb != "ENERGY" || energy_repetitions == 0) {
@@ -352,16 +400,13 @@ int main(int argc, char** argv) {
 
             prbench::Value energy_result = prbench::Value::identity(cfg.dtype, cfg.operation);
             const auto energy_start = std::chrono::steady_clock::now();
-            for (std::size_t i = 0; i < energy_repetitions; ++i) {
-                energy_result = strategy->run_once().result;
-            }
+            for (std::size_t i = 0; i < energy_repetitions; ++i) energy_result = strategy->run_once().result;
             const auto energy_end = std::chrono::steady_clock::now();
             const double energy_wall_us =
                 std::chrono::duration<double, std::micro>(energy_end - energy_start).count();
 
-            // Emitted immediately after the energy batch. Per-repetition timing
-            // serialization happens later so file/pipe I/O is outside the measured batch.
             std::cout << "{\"event\":\"measure_done\",\"repetitions\":" << energy_repetitions
+                      << ",\"logical_reductions_per_iteration\":" << cfg.reuse_count
                       << ",\"batch_wall_us\":" << energy_wall_us
                       << ",\"result\":" << energy_result.json_literal() << "}" << std::endl;
 
@@ -372,7 +417,8 @@ int main(int argc, char** argv) {
 
         for (std::size_t i = 0; i < metrics.size(); ++i) emit_result(i + 1, metrics[i], cfg);
         std::cout << "{\"event\":\"done\",\"timing_repetitions\":" << timing_repetitions
-                  << ",\"energy_repetitions\":" << energy_repetitions << "}" << std::endl;
+                  << ",\"energy_repetitions\":" << energy_repetitions
+                  << ",\"logical_reductions_per_iteration\":" << cfg.reuse_count << "}" << std::endl;
         return 0;
     } catch (const std::exception& exc) {
         std::cout << "{\"event\":\"error\",\"message\":\"" << json_escape(exc.what()) << "\"}"
