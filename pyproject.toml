@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "parallel-reduction-benchmark"
-version = "3.0.0"
+version = "4.0.0"
 description = "Research-grade CPU/GPU parallel reduction benchmarking framework"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -27,9 +27,6 @@ dev = [
 
 [project.scripts]
 prbench = "prbench.cli:main"
-prbench-memory-paths = "prbench.memory_paths:main"
-prbench-gds = "prbench.gds_study:main"
-prbench-topology-streams = "prbench.topology_streams:main"
 
 [tool.setuptools.packages.find]
 include = ["prbench*"]
