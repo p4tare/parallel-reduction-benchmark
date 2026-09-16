@@ -1,0 +1,44 @@
+# EXPERIMENTAL ONLY. Do not treat as final thesis data.
+# Purpose: find asymptotic host-resident CPU/GPU break-even and tune transfer chunk sizes.
+# Run only after memory_paths_smoke.yaml passes on apl13.
+output_dir: results/apl13_break_even_tuning
+dataset_cache_dir: .prbench/datasets
+worker: build/prbench-memory-path-worker
+
+max_dataset_ram_fraction: 0.70
+warmup: 1
+repetitions: 3
+blocks: 3
+randomization_seed: 20260916
+
+gpu_ids: [0]
+operations: [sum]
+reuse_counts: [1]
+# 16, 64, 256 Mi elements -> 64 MiB, 256 MiB, 1 GiB per float32 chunk.
+chunk_elements: [16777216, 67108864, 268435456]
+pipeline_streams: [2, 4]
+include_device_resident_diagnostic: true
+include_gpudirect_storage_probe: true
+
+modes:
+  - explicit_sync
+  - chunked_sync
+  - async_pipeline
+  - zero_copy
+  - managed_fault
+  - managed_prefetch
+  - managed_advised
+  - hmm_system
+
+# Geometric size sweep. All datasets remain host-resident; sizes beyond VRAM test streaming/UM.
+# float32 element counts correspond to 1, 4, 16, 32, 48, 64, 80, 96, 112 GiB.
+datasets:
+  - {size: 268435456, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+  - {size: 1073741824, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+  - {size: 4294967296, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+  - {size: 8589934592, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+  - {size: 12884901888, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+  - {size: 17179869184, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+  - {size: 21474836480, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+  - {size: 25769803776, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+  - {size: 30064771072, dtype: float32, distribution: uniform, seed: 51001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
