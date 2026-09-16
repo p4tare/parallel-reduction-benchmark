@@ -3,11 +3,9 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import random
 import shutil
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -18,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .datasets import DatasetFactory
 from .models import DatasetSpec, ReductionOperation
+from .validation import ResultValidator
 
 
 class _Strict(BaseModel):
@@ -104,8 +103,13 @@ def gds_diagnostics() -> dict[str, Any]:
         "nvidia_fs_device": Path("/dev/nvidia-fs").exists(),
         "gdscheck": gdscheck,
         "libcufile": libcufile,
-        "available_for_native_adapter": bool(libcufile and ("nvidia_fs " in modules or Path("/dev/nvidia-fs").exists())),
-        "note": "GDS remains an out-of-core/storage experiment and is not mixed into host-resident ranking.",
+        "available_for_native_adapter": bool(
+            libcufile and ("nvidia_fs " in modules or Path("/dev/nvidia-fs").exists())
+        ),
+        "note": (
+            "GDS remains an out-of-core/storage experiment and is not mixed into "
+            "host-resident ranking."
+        ),
     }
 
 
@@ -114,11 +118,22 @@ def hmm_diagnostics() -> dict[str, Any]:
     if not smi:
         return {"nvidia_smi": None, "addressing_mode_lines": [], "hmm_reported": False}
     try:
-        out = subprocess.run([smi, "-q"], text=True, capture_output=True, timeout=15, check=False).stdout
+        out = subprocess.run(
+            [smi, "-q"], text=True, capture_output=True, timeout=15, check=False
+        ).stdout
     except Exception as exc:  # pragma: no cover - host dependent
-        return {"nvidia_smi": smi, "error": str(exc), "addressing_mode_lines": [], "hmm_reported": False}
+        return {
+            "nvidia_smi": smi,
+            "error": str(exc),
+            "addressing_mode_lines": [],
+            "hmm_reported": False,
+        }
     lines = [line.strip() for line in out.splitlines() if "Addressing Mode" in line]
-    return {"nvidia_smi": smi, "addressing_mode_lines": lines, "hmm_reported": any("HMM" in line for line in lines)}
+    return {
+        "nvidia_smi": smi,
+        "addressing_mode_lines": lines,
+        "hmm_reported": any("HMM" in line for line in lines),
+    }
 
 
 def build_tasks(cfg: MemoryPathStudyConfig) -> list[Task]:
@@ -131,39 +146,97 @@ def build_tasks(cfg: MemoryPathStudyConfig) -> list[Task]:
             for mode in modes:
                 for gpu in cfg.gpu_ids:
                     for reuse in cfg.reuse_counts:
-                        chunks = cfg.chunk_elements if mode in {"chunked_sync", "async_pipeline"} else [cfg.chunk_elements[0]]
+                        chunks = (
+                            cfg.chunk_elements
+                            if mode in {"chunked_sync", "async_pipeline"}
+                            else [cfg.chunk_elements[0]]
+                        )
                         streams = cfg.pipeline_streams if mode == "async_pipeline" else [1]
                         for chunk in chunks:
                             for stream_count in streams:
-                                base.append(Task(0, ds, op, mode, gpu, reuse, chunk, stream_count))
+                                base.append(
+                                    Task(
+                                        0,
+                                        ds,
+                                        op,
+                                        mode,
+                                        gpu,
+                                        reuse,
+                                        chunk,
+                                        stream_count,
+                                    )
+                                )
     tasks: list[Task] = []
     for block in range(cfg.blocks):
-        cloned = [Task(block, x.dataset, x.operation, x.mode, x.gpu_id, x.reuse_count, x.chunk_elements, x.streams) for x in base]
+        cloned = [
+            Task(
+                block,
+                x.dataset,
+                x.operation,
+                x.mode,
+                x.gpu_id,
+                x.reuse_count,
+                x.chunk_elements,
+                x.streams,
+            )
+            for x in base
+        ]
         random.Random(cfg.randomization_seed + block).shuffle(cloned)
         tasks.extend(cloned)
     return tasks
 
 
-def run_worker(worker: Path, artifact_path: Path, task: Task, count: int, dtype: str, warmup: int, repetitions: int) -> dict[str, Any]:
+def run_worker(
+    worker: Path,
+    artifact_path: Path,
+    task: Task,
+    count: int,
+    dtype: str,
+    warmup: int,
+    repetitions: int,
+) -> dict[str, Any]:
     cmd = [
         str(worker),
-        "--dataset", str(artifact_path),
-        "--dtype", dtype,
-        "--operation", task.operation.value,
-        "--mode", task.mode,
-        "--count", str(count),
-        "--chunk-elements", str(task.chunk_elements),
-        "--streams", str(task.streams),
-        "--device", str(task.gpu_id),
-        "--reuse-count", str(task.reuse_count),
-        "--warmup", str(warmup),
-        "--repetitions", str(repetitions),
+        "--dataset",
+        str(artifact_path),
+        "--dtype",
+        dtype,
+        "--operation",
+        task.operation.value,
+        "--mode",
+        task.mode,
+        "--count",
+        str(count),
+        "--chunk-elements",
+        str(task.chunk_elements),
+        "--streams",
+        str(task.streams),
+        "--device",
+        str(task.gpu_id),
+        "--reuse-count",
+        str(task.reuse_count),
+        "--warmup",
+        str(warmup),
+        "--repetitions",
+        str(repetitions),
     ]
     completed = subprocess.run(cmd, text=True, capture_output=True, check=False)
     if completed.returncode != 0:
-        reason = completed.stderr.strip() or completed.stdout.strip() or f"exit={completed.returncode}"
+        reason = (
+            completed.stderr.strip()
+            or completed.stdout.strip()
+            or f"exit={completed.returncode}"
+        )
         lower = reason.lower()
-        status = "skipped" if any(k in lower for k in ("unavailable", "not supported", "invalid device")) else "failed"
+        skip_tokens = (
+            "unavailable",
+            "not supported",
+            "invalid device",
+            "pageablememoryaccess=0",
+            "out of memory",
+            "memory allocation",
+        )
+        status = "skipped" if any(k in lower for k in skip_tokens) else "failed"
         return {"status": status, "reason": reason, "command": cmd}
     lines = [x for x in completed.stdout.splitlines() if x.strip()]
     if not lines:
@@ -171,16 +244,36 @@ def run_worker(worker: Path, artifact_path: Path, task: Task, count: int, dtype:
     try:
         payload = json.loads(lines[-1])
     except json.JSONDecodeError as exc:
-        return {"status": "failed", "reason": f"invalid worker JSON: {exc}", "stdout": completed.stdout, "command": cmd}
+        return {
+            "status": "failed",
+            "reason": f"invalid worker JSON: {exc}",
+            "stdout": completed.stdout,
+            "command": cmd,
+        }
     return {"status": "ok", **payload, "command": cmd}
 
 
 def _summary(rows: list[dict[str, Any]], path: Path) -> None:
-    ok = [r for r in rows if r.get("status") == "ok"]
+    ok = [r for r in rows if r.get("status") == "ok" and r.get("is_correct") is True]
     fields = [
-        "dataset_bytes", "dtype", "operation", "mode", "gpu_id", "reuse_count",
-        "chunk_elements", "streams", "mean_total_ms", "mean_h2d_ms", "mean_kernel_ms",
-        "mean_d2h_ms", "mean_h2d_bytes", "mean_remote_host_read_bytes", "block",
+        "dataset_bytes",
+        "dtype",
+        "operation",
+        "mode",
+        "gpu_id",
+        "reuse_count",
+        "chunk_elements",
+        "streams",
+        "mean_total_ms",
+        "mean_h2d_ms",
+        "mean_kernel_ms",
+        "mean_d2h_ms",
+        "mean_h2d_bytes",
+        "mean_remote_host_read_bytes",
+        "is_correct",
+        "absolute_error",
+        "relative_error",
+        "block",
     ]
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
@@ -194,7 +287,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         "host_ram_bytes": psutil.virtual_memory().total,
         "hmm": hmm_diagnostics(),
         "gpudirect_storage": gds_diagnostics(),
-        "memory_path_worker": str((_project_root() / "build/prbench-memory-path-worker").resolve()),
+        "memory_path_worker": str(
+            (_project_root() / "build/prbench-memory-path-worker").resolve()
+        ),
+        "gds_worker": str((_project_root() / "build/prbench-gds-worker").resolve()),
     }
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
@@ -205,28 +301,50 @@ def cmd_run(args: argparse.Namespace) -> int:
     cfg = load_config(Path(args.config).resolve())
     worker = cfg.worker if cfg.worker.is_absolute() else root / cfg.worker
     if not worker.exists():
-        raise SystemExit(f"memory path worker not found: {worker}; build the branch with CUDA first")
+        raise SystemExit(
+            f"memory path worker not found: {worker}; build the branch with CUDA first"
+        )
     output = cfg.output_dir if cfg.output_dir.is_absolute() else root / cfg.output_dir
     output.mkdir(parents=True, exist_ok=True)
-    dataset_factory = DatasetFactory(cfg.dataset_cache_dir if cfg.dataset_cache_dir.is_absolute() else root / cfg.dataset_cache_dir)
+    dataset_factory = DatasetFactory(
+        cfg.dataset_cache_dir
+        if cfg.dataset_cache_dir.is_absolute()
+        else root / cfg.dataset_cache_dir
+    )
+    validator = ResultValidator()
     ram = psutil.virtual_memory().total
     artifacts: dict[str, Any] = {}
     for ds in cfg.datasets:
-        bytes_ = ds.size * {"int32": 4, "float32": 4, "int64": 8, "float64": 8}[ds.dtype.value]
+        bytes_ = ds.size * {
+            "int32": 4,
+            "float32": 4,
+            "int64": 8,
+            "float64": 8,
+        }[ds.dtype.value]
         if bytes_ > ram * cfg.max_dataset_ram_fraction:
-            raise MemoryError(f"dataset {bytes_} B exceeds configured host-RAM fraction {cfg.max_dataset_ram_fraction:.1%}")
+            raise MemoryError(
+                f"dataset {bytes_} B exceeds configured host-RAM fraction "
+                f"{cfg.max_dataset_ram_fraction:.1%}"
+            )
         key = json.dumps(ds.model_dump(mode="json"), sort_keys=True)
         artifacts[key] = dataset_factory.get_or_create(ds)
 
     manifest = {
-        "schema": 1,
+        "schema": 2,
         "config": cfg.model_dump(mode="json"),
         "host_ram_bytes": ram,
         "hmm": hmm_diagnostics(),
-        "gpudirect_storage": gds_diagnostics() if cfg.include_gpudirect_storage_probe else None,
-        "note": "Host-resident memory-path study. GPUDirect Storage is diagnosed separately and excluded from this ranking.",
+        "gpudirect_storage": (
+            gds_diagnostics() if cfg.include_gpudirect_storage_probe else None
+        ),
+        "note": (
+            "Host-resident memory-path study. GPUDirect Storage is diagnosed separately "
+            "and excluded from this ranking."
+        ),
     }
-    (output / "memory_path_manifest.json").write_text(json.dumps(manifest, indent=2, default=str, sort_keys=True), encoding="utf-8")
+    (output / "memory_path_manifest.json").write_text(
+        json.dumps(manifest, indent=2, default=str, sort_keys=True), encoding="utf-8"
+    )
 
     rows: list[dict[str, Any]] = []
     out_jsonl = output / "memory_path_repetitions.jsonl"
@@ -235,7 +353,35 @@ def cmd_run(args: argparse.Namespace) -> int:
             key = json.dumps(task.dataset.model_dump(mode="json"), sort_keys=True)
             artifact = artifacts[key]
             dataset_bytes = int(artifact.metadata["size_bytes"])
-            result = run_worker(worker, artifact.data_path, task, task.dataset.size, task.dataset.dtype.value, cfg.warmup, cfg.repetitions)
+            result = run_worker(
+                worker,
+                artifact.data_path,
+                task,
+                task.dataset.size,
+                task.dataset.dtype.value,
+                cfg.warmup,
+                cfg.repetitions,
+            )
+            validation_payload: dict[str, Any] = {}
+            status = result.get("status", "failed")
+            if status == "ok" and "result" in result:
+                validation = validator.validate(
+                    actual=result["result"],
+                    reference=artifact.reference_for(task.operation),
+                    sum_abs=float(artifact.metadata["sum_abs"]),
+                    dtype=task.dataset.dtype,
+                    count=task.dataset.size,
+                    operation=task.operation,
+                )
+                validation_payload = {
+                    "reference": artifact.reference_for(task.operation),
+                    "is_correct": validation.is_correct,
+                    "absolute_error": validation.absolute_error,
+                    "relative_error": validation.relative_error,
+                    "validation_tolerance": validation.tolerance,
+                }
+                if not validation.is_correct:
+                    status = "invalid"
             row = {
                 "sequence_index": index,
                 "block": task.block,
@@ -250,11 +396,17 @@ def cmd_run(args: argparse.Namespace) -> int:
                 "chunk_elements": task.chunk_elements,
                 "streams": task.streams,
                 **result,
+                **validation_payload,
+                "status": status,
             }
             rows.append(row)
             fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
             fh.flush()
-            print(f"[{index + 1}] block={task.block} mode={task.mode} gpu={task.gpu_id} N={task.dataset.size} reuse={task.reuse_count}: {row['status']}", flush=True)
+            print(
+                f"[{index + 1}] block={task.block} mode={task.mode} gpu={task.gpu_id} "
+                f"N={task.dataset.size} reuse={task.reuse_count}: {row['status']}",
+                flush=True,
+            )
     _summary(rows, output / "memory_path_summary.csv")
     return 0
 
