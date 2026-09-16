@@ -101,6 +101,26 @@ if(PRBENCH_HAS_CUDA)
     target_link_libraries(prbench-file-stream-worker PRIVATE CUDA::cudart)
     target_compile_options(prbench-file-stream-worker PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-O3;-lineinfo>)
 
+    add_executable(prbench-topology-stream-worker native/src/topology_stream_worker.cu)
+    set_target_properties(prbench-topology-stream-worker PROPERTIES
+        CUDA_STANDARD 17
+        CUDA_STANDARD_REQUIRED ON
+    )
+    target_link_libraries(prbench-topology-stream-worker PRIVATE CUDA::cudart Threads::Threads)
+    target_compile_options(prbench-topology-stream-worker PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-O3;-lineinfo>)
+
+    find_path(PRBENCH_NUMA_INCLUDE_DIR numa.h)
+    find_library(PRBENCH_NUMA_LIBRARY numa)
+    if(PRBENCH_NUMA_INCLUDE_DIR AND PRBENCH_NUMA_LIBRARY)
+        target_include_directories(prbench-topology-stream-worker PRIVATE ${PRBENCH_NUMA_INCLUDE_DIR})
+        target_link_libraries(prbench-topology-stream-worker PRIVATE ${PRBENCH_NUMA_LIBRARY})
+        target_compile_definitions(prbench-topology-stream-worker PRIVATE PRBENCH_HAS_LIBNUMA=1)
+        message(STATUS "NUMA-aware topology streaming enabled")
+    else()
+        target_compile_definitions(prbench-topology-stream-worker PRIVATE PRBENCH_HAS_LIBNUMA=0)
+        message(STATUS "libnuma not found; topology streaming will use portable registered staging")
+    endif()
+
     if(PRBENCH_ENABLE_GDS)
         find_path(PRBENCH_CUFILE_INCLUDE_DIR cufile.h
             HINTS
