@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -15,12 +16,22 @@ struct DeviceMetrics {
     double d2h_us{0.0};
     double device_overhead_us{0.0};
     double total_us{0.0};
+    double storage_read_us{0.0};
+    double host_staging_us{0.0};
+    std::uint64_t storage_read_bytes{0};
+    std::uint64_t h2d_bytes{0};
+    std::uint64_t d2h_bytes{0};
+    std::uint64_t remote_host_read_bytes{0};
     std::size_t chunks{0};
     std::size_t elements{0};
+    bool numa_requested{false};
+    bool numa_applied{false};
 };
 
 struct CpuMetrics {
     double compute_us{0.0};
+    double storage_read_us{0.0};
+    std::uint64_t storage_read_bytes{0};
     std::size_t chunks{0};
     std::size_t elements{0};
 };
@@ -64,7 +75,6 @@ struct IterationMetrics {
     double merge_us{0.0};
     CpuMetrics cpu;
     std::vector<DeviceMetrics> gpus;
-    // For adaptive scheduling: final EMA model after this iteration. Empty otherwise.
     std::vector<double> worker_throughput_elements_s;
 };
 
