@@ -98,14 +98,6 @@ class ThermalGuard:
 
 
 def openmp_places_for_cpus(cpus: list[int]) -> str | None:
-    """Return an explicit OpenMP place list matching the benchmark CPU pool.
-
-    Using the generic OMP_PLACES=threads lets the runtime rediscover machine-wide
-    hardware threads independently of the benchmark's affinity selection.  For hybrid
-    runs (for example 23 compute cores + one dedicated GPU control core) that can make
-    fork/join placement depend on runtime initialization order.  An explicit place list
-    keeps OpenMP workers on exactly the CPUs recorded in TaskSpec/manifest.
-    """
     if not cpus:
         return None
     return ",".join(f"{{{cpu}}}" for cpu in cpus)
@@ -135,14 +127,12 @@ class ExperimentRunner:
         task_base = self._task_metadata(task, sequence_index)
         self._capture_telemetry(task, sequence_index, "task_entry")
         try:
-            self._validate_dataset_spec_memory_budget(task.dataset)
+            self._validate_dataset_spec_memory_budget(task)
             self._validate_exact_gpu_memory_budget(task)
             dataset = self.dataset_factory.get_or_create(task.dataset)
-            self._validate_memory_budget(dataset)
+            self._validate_memory_budget(task, dataset)
             self.thermal.wait_until_safe(task.gpu_ids)
             self._validate_runtime_idleness(task)
-            # `pre_task` is deliberately after the thermal/idleness safety gates; `task_entry`
-            # preserves the state before any wait so cooldown/order effects remain auditable.
             self._capture_telemetry(task, sequence_index, "pre_task")
             self._run_worker(task, dataset, sequence_index, started_iso)
         except KeyboardInterrupt:
@@ -251,8 +241,6 @@ class ExperimentRunner:
         if explicit_places is not None:
             env["OMP_PLACES"] = explicit_places
         else:
-            # GPU-only workers do not execute OpenMP reductions; keep a valid fallback
-            # for native self-tests or future CPU work without changing their CPU mask.
             env["OMP_PLACES"] = "threads"
         task_monotonic_start = time.monotonic()
         with stderr_path.open("w", encoding="utf-8") as stderr_file:
@@ -304,9 +292,6 @@ class ExperimentRunner:
                     + (f" (probe_mean={timing_probe_mean_us:.3f} us)" if timing_probe_mean_us is not None else ""),
                     flush=True,
                 )
-                # Dataset replica materialization, CUDA setup, scheduler calibration and
-                # warm-up happen before READY/PROBE. Re-apply safety/idleness gates here
-                # so those excluded setup phases cannot silently determine TIMING start state.
                 self.thermal.wait_until_safe(task.gpu_ids)
                 self._validate_runtime_idleness(task, {process.pid})
                 if self.config.telemetry.capture_pre_post_timing:
@@ -322,10 +307,6 @@ class ExperimentRunner:
                 if self.config.telemetry.capture_pre_post_timing:
                     self._capture_telemetry(task, sequence_index, "post_timing")
 
-                # CPU package energy is meaningful for all strategies when requested (it
-                # includes host/control/idle package cost). GPU energy only exists when the
-                # task actually owns GPUs. This avoids useless ENERGY batches for CPU-only
-                # tasks when only GPU energy was enabled.
                 cpu_energy_enabled = self.config.energy.enable_cpu
                 gpu_energy_enabled = self.config.energy.enable_gpu and bool(task.gpu_ids)
                 energy_enabled = cpu_energy_enabled or gpu_energy_enabled
@@ -516,10 +497,6 @@ class ExperimentRunner:
 
     @staticmethod
     def _numerical_mismatch_is_fatal(task: TaskSpec) -> bool:
-        # A tolerance breach means the implementation did not satisfy the benchmark's
-        # correctness contract. Floating-point SUM remains order-sensitive, but that is
-        # already reflected in ResultValidator's dtype/count/cancellation-aware tolerance.
-        # Invalid numerical results must never remain eligible for a performance ranking.
         return True
 
     def _capture_telemetry(self, task: TaskSpec, sequence_index: int, phase: str) -> None:
@@ -570,8 +547,17 @@ class ExperimentRunner:
             "pipeline_streams": 4,
             "pipeline_chunks": 16,
             "pipeline_chunk_elements": 0,
+            "reuse_count": 1,
+            "use_cuda_graphs": False,
+            "cpu_fraction": -1.0,
             **task.algorithm_params,
         }
+        gpu_nodes = []
+        by_gpu = {gpu.index: gpu for gpu in self.topology.gpus}
+        for gpu_id in task.gpu_ids:
+            node = by_gpu.get(gpu_id).numa_node if by_gpu.get(gpu_id) is not None else None
+            gpu_nodes.append(-1 if node is None else int(node))
+
         cmd = [
             str(self.worker_path),
             "--dataset", str(dataset.data_path),
@@ -582,7 +568,10 @@ class ExperimentRunner:
             "--cpu-backend", task.algorithm.cpu_backend or "none",
             "--gpu-backend", task.algorithm.gpu_backend or "none",
             "--transfer-policy", task.algorithm.transfer_policy or "sync",
+            "--memory-path", task.algorithm.memory_path or "default",
+            "--storage-policy", task.algorithm.storage_policy,
             "--gpus", ",".join(map(str, task.gpu_ids)),
+            "--gpu-numa-nodes", ",".join(map(str, gpu_nodes)),
             "--cpu-affinity", ",".join(map(str, task.cpu_affinity)),
             "--gpu-worker-cpus", ",".join(map(str, task.gpu_worker_cpus)),
             "--cpu-threads", str(max(1, len(task.cpu_affinity))),
@@ -601,8 +590,12 @@ class ExperimentRunner:
             "--pipeline-streams", str(params["pipeline_streams"]),
             "--pipeline-chunks", str(params["pipeline_chunks"]),
             "--pipeline-chunk-elements", str(params["pipeline_chunk_elements"]),
+            "--reuse-count", str(params["reuse_count"]),
+            "--cpu-fraction", str(params["cpu_fraction"]),
         ]
-        if task.memory_policy == "interleave" and shutil.which("numactl") and self.topology.numa_nodes:
+        if bool(params["use_cuda_graphs"]):
+            cmd.append("--cuda-graphs")
+        if task.algorithm.storage_policy == "host_resident" and task.memory_policy == "interleave" and shutil.which("numactl") and self.topology.numa_nodes:
             nodes = ",".join(map(str, sorted(self.topology.numa_nodes)))
             return ["numactl", f"--interleave={nodes}", *cmd]
         return cmd
@@ -613,8 +606,10 @@ class ExperimentRunner:
             dataset_bytes, m.cache_rotation_target_bytes, m.cache_rotation_max_replicas
         )
 
-    def _validate_dataset_spec_memory_budget(self, spec) -> None:
-        dataset_bytes = dataset_size_bytes(spec)
+    def _validate_dataset_spec_memory_budget(self, task: TaskSpec) -> None:
+        if task.algorithm.storage_policy != "host_resident":
+            return
+        dataset_bytes = dataset_size_bytes(task.dataset)
         resident = self._dataset_resident_bytes(dataset_bytes)
         fraction = resident / max(1, self.topology.total_ram_bytes)
         if fraction > self.config.measurement.max_dataset_ram_fraction:
@@ -634,7 +629,9 @@ class ExperimentRunner:
                     f"exceeds safe free-VRAM budget {row['safe_budget_bytes']} bytes for {row['algorithm_id']}"
                 )
 
-    def _validate_memory_budget(self, dataset: DatasetArtifact) -> None:
+    def _validate_memory_budget(self, task: TaskSpec, dataset: DatasetArtifact) -> None:
+        if task.algorithm.storage_policy != "host_resident":
+            return
         source_bytes = int(dataset.metadata["size_bytes"])
         resident = self._dataset_resident_bytes(source_bytes)
         fraction = resident / max(1, self.topology.total_ram_bytes)
@@ -655,6 +652,8 @@ class ExperimentRunner:
             "algorithm_id": task.algorithm.id,
             "algorithm_role": task.algorithm.role,
             "algorithm_params": task.algorithm_params,
+            "memory_path": task.algorithm.memory_path,
+            "storage_policy": task.algorithm.storage_policy,
             "dataset_size": task.dataset.size,
             "dtype": task.dataset.dtype.value,
             "operation": task.operation.value,
@@ -707,7 +706,6 @@ class ExperimentRunner:
             "cpu_package_energy_per_reduction_j": (float(cpu) / repetitions) if cpu is not None else None,
             "gpu_energy_per_reduction_j": (float(gpu) / repetitions) if gpu is not None else None,
             "measured_component_energy_per_reduction_j": (measured / repetitions) if measured is not None else None,
-            # Backward-compatible alias, explicitly qualified by energy_coverage.
             "total_energy_per_reduction_j": (measured / repetitions) if measured is not None else None,
             "energy_coverage": coverage,
             "energy_requested_components": requested_parts,
