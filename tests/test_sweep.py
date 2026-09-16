@@ -216,3 +216,36 @@ def test_multi_gpu_pairs_selector_expands_all_pairs_and_deduplicates_all() -> No
     )
     tasks = SweepPlanner(AlgorithmCatalog(), topology).plan(config)
     assert {tuple(t.gpu_ids) for t in tasks} == {(0, 1), (0, 2), (1, 2), (0, 1, 2)}
+
+
+def test_mixed_explicit_single_and_multi_gpu_sets_are_supported() -> None:
+    from prbench.models import TopologyGpu
+
+    topology = SystemTopologyModel(
+        hostname="dual", os="Linux", kernel="x", machine="x86_64",
+        logical_cpus=[
+            TopologyCpu(cpu_id=0, socket_id=0, core_id=0, numa_node=0),
+            TopologyCpu(cpu_id=1, socket_id=0, core_id=1, numa_node=0),
+            TopologyCpu(cpu_id=2, socket_id=0, core_id=2, numa_node=0),
+        ],
+        allowed_cpus=[0, 1, 2], numa_nodes={0: [0, 1, 2]},
+        gpus=[
+            TopologyGpu(index=0, name="g0", uuid="0", pci_bus_id="0000:01:00.0", memory_bytes=8 << 30),
+            TopologyGpu(index=1, name="g1", uuid="1", pci_bus_id="0000:02:00.0", memory_bytes=8 << 30),
+        ],
+        total_ram_bytes=64 << 30, nvml_available=True,
+    )
+    config = RootConfig(
+        measurement={"blocks": 1, "timing_repetitions": 3},
+        energy={"enable_cpu": False, "enable_gpu": False},
+        experiments=[
+            ExperimentGroup(
+                id="mixed",
+                datasets=[DatasetSpec(size=1024, dtype=DType.float32)],
+                algorithms=[{"id": "hybrid_static_equal_async"}],
+                hardware=HardwareConfig(gpu_sets=[0, 1, [0, 1]]),
+            )
+        ],
+    )
+    tasks = SweepPlanner(AlgorithmCatalog(), topology).plan(config)
+    assert {tuple(t.gpu_ids) for t in tasks} == {(0,), (1,), (0, 1)}
