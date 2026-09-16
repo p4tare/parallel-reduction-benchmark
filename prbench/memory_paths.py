@@ -12,7 +12,7 @@ from typing import Any
 
 import psutil
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .datasets import DatasetFactory
 from .models import DatasetSpec, ReductionOperation
@@ -43,6 +43,7 @@ class MemoryPathStudyConfig(_Strict):
     reuse_counts: list[int] = Field(default_factory=lambda: [1, 2, 4, 8, 16, 32])
     chunk_elements: list[int] = Field(default_factory=lambda: [4_194_304, 16_777_216, 67_108_864])
     pipeline_streams: list[int] = Field(default_factory=lambda: [2, 4])
+    cuda_graph_modes: list[str] = Field(default_factory=list)
     warmup: int = Field(default=1, ge=0, le=20)
     repetitions: int = Field(default=3, ge=1, le=100)
     blocks: int = Field(default=3, ge=1, le=100)
@@ -60,6 +61,14 @@ class MemoryPathStudyConfig(_Strict):
             raise ValueError("values must be non-negative")
         return value
 
+    @model_validator(mode="after")
+    def _validate_graph_modes(self) -> "MemoryPathStudyConfig":
+        allowed = {"explicit_sync", "device_resident"}
+        invalid = sorted(set(self.cuda_graph_modes) - allowed)
+        if invalid:
+            raise ValueError(f"cuda_graph_modes currently support only {sorted(allowed)}; invalid={invalid}")
+        return self
+
 
 @dataclass(frozen=True)
 class Task:
@@ -71,6 +80,7 @@ class Task:
     reuse_count: int
     chunk_elements: int
     streams: int
+    use_cuda_graphs: bool = False
 
 
 def _project_root() -> Path:
@@ -164,6 +174,7 @@ def build_tasks(cfg: MemoryPathStudyConfig) -> list[Task]:
                                         reuse,
                                         chunk,
                                         stream_count,
+                                        mode in cfg.cuda_graph_modes,
                                     )
                                 )
     tasks: list[Task] = []
@@ -178,6 +189,7 @@ def build_tasks(cfg: MemoryPathStudyConfig) -> list[Task]:
                 x.reuse_count,
                 x.chunk_elements,
                 x.streams,
+                x.use_cuda_graphs,
             )
             for x in base
         ]
@@ -197,29 +209,20 @@ def run_worker(
 ) -> dict[str, Any]:
     cmd = [
         str(worker),
-        "--dataset",
-        str(artifact_path),
-        "--dtype",
-        dtype,
-        "--operation",
-        task.operation.value,
-        "--mode",
-        task.mode,
-        "--count",
-        str(count),
-        "--chunk-elements",
-        str(task.chunk_elements),
-        "--streams",
-        str(task.streams),
-        "--device",
-        str(task.gpu_id),
-        "--reuse-count",
-        str(task.reuse_count),
-        "--warmup",
-        str(warmup),
-        "--repetitions",
-        str(repetitions),
+        "--dataset", str(artifact_path),
+        "--dtype", dtype,
+        "--operation", task.operation.value,
+        "--mode", task.mode,
+        "--count", str(count),
+        "--chunk-elements", str(task.chunk_elements),
+        "--streams", str(task.streams),
+        "--device", str(task.gpu_id),
+        "--reuse-count", str(task.reuse_count),
+        "--warmup", str(warmup),
+        "--repetitions", str(repetitions),
     ]
+    if task.use_cuda_graphs:
+        cmd.append("--cuda-graphs")
     completed = subprocess.run(cmd, text=True, capture_output=True, check=False)
     if completed.returncode != 0:
         reason = (
@@ -256,24 +259,10 @@ def run_worker(
 def _summary(rows: list[dict[str, Any]], path: Path) -> None:
     ok = [r for r in rows if r.get("status") == "ok" and r.get("is_correct") is True]
     fields = [
-        "dataset_bytes",
-        "dtype",
-        "operation",
-        "mode",
-        "gpu_id",
-        "reuse_count",
-        "chunk_elements",
-        "streams",
-        "mean_total_ms",
-        "mean_h2d_ms",
-        "mean_kernel_ms",
-        "mean_d2h_ms",
-        "mean_h2d_bytes",
-        "mean_remote_host_read_bytes",
-        "is_correct",
-        "absolute_error",
-        "relative_error",
-        "block",
+        "dataset_bytes", "dtype", "operation", "mode", "gpu_id", "reuse_count",
+        "chunk_elements", "streams", "use_cuda_graphs", "mean_total_ms", "mean_h2d_ms",
+        "mean_kernel_ms", "mean_d2h_ms", "mean_h2d_bytes", "mean_remote_host_read_bytes",
+        "is_correct", "absolute_error", "relative_error", "block",
     ]
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
@@ -330,7 +319,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         artifacts[key] = dataset_factory.get_or_create(ds)
 
     manifest = {
-        "schema": 2,
+        "schema": 3,
         "config": cfg.model_dump(mode="json"),
         "host_ram_bytes": ram,
         "hmm": hmm_diagnostics(),
@@ -395,6 +384,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 "reuse_count": task.reuse_count,
                 "chunk_elements": task.chunk_elements,
                 "streams": task.streams,
+                "use_cuda_graphs": task.use_cuda_graphs,
                 **result,
                 **validation_payload,
                 "status": status,
