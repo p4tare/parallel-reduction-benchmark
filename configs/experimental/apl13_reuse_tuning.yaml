@@ -1,0 +1,33 @@
+# EXPERIMENTAL ONLY. Do not treat as final thesis data.
+# Purpose: find reuse_count at which one initial data placement is amortized.
+output_dir: results/apl13_reuse_tuning
+dataset_cache_dir: .prbench/datasets
+worker: build/prbench-memory-path-worker
+
+max_dataset_ram_fraction: 0.70
+warmup: 1
+repetitions: 3
+blocks: 3
+randomization_seed: 20260917
+
+gpu_ids: [0]
+operations: [sum, min, max]
+reuse_counts: [1, 2, 4, 8, 16, 32, 64, 128]
+chunk_elements: [67108864]
+pipeline_streams: [4]
+include_device_resident_diagnostic: true
+include_gpudirect_storage_probe: false
+
+modes:
+  - explicit_sync
+  - async_pipeline
+  - zero_copy
+  - managed_fault
+  - managed_prefetch
+  - managed_advised
+
+# Keep reuse study initially below single-GPU VRAM so residency can be measured cleanly.
+datasets:
+  - {size: 268435456, dtype: float32, distribution: uniform, seed: 51101, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+  - {size: 2147483648, dtype: float32, distribution: uniform, seed: 51101, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+  - {size: 4294967296, dtype: float32, distribution: uniform, seed: 51101, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
