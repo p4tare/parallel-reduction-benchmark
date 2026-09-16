@@ -99,16 +99,10 @@ class HardwareConfig(StrictModel):
     cpu_core_class: CpuCoreClass = CpuCoreClass.all
     cpu_thread_policy: CpuThreadPolicy = CpuThreadPolicy.one_thread_per_core
     cpu_numa_node: int | None = Field(default=None, ge=0)
-    # Exact OS CPU IDs are an explicit, reproducible override for platforms where
-    # automatic heterogeneous-core classification is unavailable or intentionally
-    # not used. When present, this selection takes precedence over core/thread filters.
     cpu_explicit_ids: list[int] | None = None
     gpu_sets: list[Any] = Field(default_factory=lambda: ["each"])
     gpu_control_mode: GpuControlMode = GpuControlMode.dedicated
     memory_policy: Literal["default", "interleave"] = "interleave"
-    # Staging buffers used by registered/pipelined GPU transfers can be placed on the
-    # NUMA node reported for each GPU. `auto` uses local placement when libnuma is built,
-    # `off` uses portable CUDA host allocation, and `strict` fails instead of falling back.
     gpu_staging_numa: Literal["auto", "off", "strict"] = "auto"
 
     @field_validator("cpu_explicit_ids")
@@ -142,11 +136,7 @@ class MeasurementConfig(StrictModel):
     energy_max_repetitions: int = Field(default=1_000_000, ge=1)
     blocks: int = Field(default=3, ge=1, le=100)
     randomization_seed: int = 20260813
-    # Applies only to algorithms whose catalog storage_policy is host_resident.
-    # file_stream/GDS algorithms are instead guarded by storage-capacity preflight.
     max_dataset_ram_fraction: float = Field(default=0.65, gt=0.05, le=0.95)
-    # Before generating missing cached datasets, keep this fraction of currently free
-    # filesystem space as the maximum dataset-cache growth budget.
     max_dataset_storage_fraction_of_free: float = Field(default=0.90, gt=0.05, le=0.98)
     gpu_memory_safety_fraction: float = Field(default=0.80, gt=0.20, le=0.95)
     thermal_safety_gpu_c: float = Field(default=90.0, ge=40.0, le=110.0)
@@ -250,6 +240,7 @@ class AlgorithmDefinition(StrictModel):
     cpu_backend: str | None = None
     gpu_backend: str | None = None
     transfer_policy: str | None = None
+    memory_path: str | None = None
     storage_policy: Literal["host_resident", "file_stream", "gds"] = "host_resident"
     requires_cuda: bool = False
     uses_cpu: bool
