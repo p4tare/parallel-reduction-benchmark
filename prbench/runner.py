@@ -137,30 +137,26 @@ class ExperimentRunner:
             self._run_worker(task, dataset, sequence_index, started_iso)
         except KeyboardInterrupt:
             self._capture_telemetry(task, sequence_index, "post_task_interrupted")
-            self.results.append_task(
-                {
-                    **task_base,
-                    "status": "interrupted",
-                    "error": "KeyboardInterrupt",
-                    "timestamp_start": started_iso,
-                    "timestamp_end": utc_now_iso(),
-                    "duration_s": time.monotonic() - started_monotonic,
-                }
-            )
+            self.results.append_task({
+                **task_base,
+                "status": "interrupted",
+                "error": "KeyboardInterrupt",
+                "timestamp_start": started_iso,
+                "timestamp_end": utc_now_iso(),
+                "duration_s": time.monotonic() - started_monotonic,
+            })
             raise
         except Exception as exc:
             self._capture_telemetry(task, sequence_index, "post_task_failed")
             error_text = f"{type(exc).__name__}: {exc}"
-            self.results.append_task(
-                {
-                    **task_base,
-                    "status": "failed",
-                    "error": error_text,
-                    "timestamp_start": started_iso,
-                    "timestamp_end": utc_now_iso(),
-                    "duration_s": time.monotonic() - started_monotonic,
-                }
-            )
+            self.results.append_task({
+                **task_base,
+                "status": "failed",
+                "error": error_text,
+                "timestamp_start": started_iso,
+                "timestamp_end": utc_now_iso(),
+                "duration_s": time.monotonic() - started_monotonic,
+            })
             print(
                 f"FAILED task={task.task_instance_id} algorithm={task.algorithm.id} "
                 f"N={task.dataset.size} dtype={task.dataset.dtype.value} "
@@ -176,14 +172,12 @@ class ExperimentRunner:
         if not self.config.measurement.strict_preflight:
             return
         allowed_gpu_pids = allowed_gpu_pids or set()
-
         load = psutil.cpu_percent(interval=0.25)
         limit = self.config.measurement.max_preflight_cpu_load_percent
         if load > limit:
             raise RuntimeError(
                 f"strict runtime idleness gate: CPU utilization {load:.1f}% exceeds {limit:.1f}%"
             )
-
         if pynvml is None or not task.gpu_ids:
             return
         try:
@@ -203,7 +197,6 @@ class ExperimentRunner:
                     raise RuntimeError(
                         f"strict runtime idleness gate: GPU {gpu_id} has foreign compute processes {sorted(set(compute))}"
                     )
-
                 if not self.config.measurement.allow_gpu_graphics_processes:
                     graphics_fn = getattr(pynvml, "nvmlDeviceGetGraphicsRunningProcesses", None)
                     graphics = []
@@ -238,10 +231,7 @@ class ExperimentRunner:
         env = os.environ.copy()
         env["OMP_PROC_BIND"] = "spread"
         explicit_places = openmp_places_for_cpus(task.cpu_affinity)
-        if explicit_places is not None:
-            env["OMP_PLACES"] = explicit_places
-        else:
-            env["OMP_PLACES"] = "threads"
+        env["OMP_PLACES"] = explicit_places if explicit_places is not None else "threads"
         task_monotonic_start = time.monotonic()
         with stderr_path.open("w", encoding="utf-8") as stderr_file:
             process = subprocess.Popen(
@@ -258,21 +248,20 @@ class ExperimentRunner:
             try:
                 ready = self._read_worker_event(process.stdout)
                 if ready.event == "unsupported":
-                    self.results.append_task(
-                        {
-                            **self._task_metadata(task, sequence_index),
-                            "status": "skipped",
-                            "reason": ready.payload.get("reason"),
-                            "timestamp_start": task_started_iso,
-                            "timestamp_end": utc_now_iso(),
-                            "duration_s": time.monotonic() - task_monotonic_start,
-                        }
-                    )
+                    self.results.append_task({
+                        **self._task_metadata(task, sequence_index),
+                        "status": "skipped",
+                        "reason": ready.payload.get("reason"),
+                        "timestamp_start": task_started_iso,
+                        "timestamp_end": utc_now_iso(),
+                        "duration_s": time.monotonic() - task_monotonic_start,
+                    })
                     process.wait(timeout=10)
                     return
                 if ready.event != "ready":
                     raise ProtocolError(f"expected ready, received {ready.event}: {ready.payload}")
 
+                logical_per_iteration = int(task.algorithm_params.get("reuse_count", 1))
                 timing_probe_mean_us: float | None = None
                 timing_probe_wall_us: float | None = None
                 if self.config.measurement.timing_repetitions == "auto":
@@ -287,9 +276,12 @@ class ExperimentRunner:
                 else:
                     timing_repetitions = int(self.config.measurement.timing_repetitions)
 
+                suffix = ""
+                if logical_per_iteration > 1 and timing_probe_mean_us is not None:
+                    suffix = f"; per_logical~{timing_probe_mean_us / logical_per_iteration:.3f} us"
                 print(
                     f"    timing_batch={timing_repetitions} reps"
-                    + (f" (probe_mean={timing_probe_mean_us:.3f} us)" if timing_probe_mean_us is not None else ""),
+                    + (f" (probe_mean={timing_probe_mean_us:.3f} us{suffix})" if timing_probe_mean_us is not None else ""),
                     flush=True,
                 )
                 self.thermal.wait_until_safe(task.gpu_ids)
@@ -325,9 +317,11 @@ class ExperimentRunner:
                     )
                     energy_repetitions = self._choose_energy_repetitions(timing_estimate_us)
                     estimated_energy_s = energy_repetitions * max(0.0, timing_estimate_us) / 1_000_000.0
+                    per_logical = timing_estimate_us / logical_per_iteration
                     print(
-                        f"    timing_mean={timing_estimate_us:.3f} us; "
-                        f"energy_batch={energy_repetitions} reps (~{estimated_energy_s:.2f}s)",
+                        f"    timing_mean={timing_estimate_us:.3f} us"
+                        + (f" ({per_logical:.3f} us/logical reduction)" if logical_per_iteration > 1 else "")
+                        + f"; energy_batch={energy_repetitions} reps (~{estimated_energy_s:.2f}s)",
                         flush=True,
                     )
                     energy = CompositeEnergyMeter(
@@ -409,23 +403,25 @@ class ExperimentRunner:
                         cpu_elements = int(event.payload.get("cpu_elements", 0) or 0)
                         gpu_elements = int(event.payload.get("gpu_elements_total", 0) or 0)
                         processed = cpu_elements + gpu_elements
-                        self.results.append_repetition(
-                            {
-                                **self._task_metadata(task, sequence_index),
-                                **event.payload,
-                                "status": "ok",
-                                "reference": dataset.reference_for(task.operation),
-                                "is_correct": validation.is_correct,
-                                "absolute_error": validation.absolute_error,
-                                "relative_error": validation.relative_error,
-                                "validation_tolerance": validation.tolerance,
-                                "dataset_sha256": dataset.metadata["sha256"],
-                                "accumulator_semantics": "native_input_dtype",
-                                "cpu_work_fraction": (cpu_elements / processed) if processed else 0.0,
-                                "gpu_work_fraction": (gpu_elements / processed) if processed else 0.0,
-                                "processed_elements": processed,
-                            }
-                        )
+                        event_logical = int(event.payload.get("logical_reductions", logical_per_iteration) or 1)
+                        self.results.append_repetition({
+                            **self._task_metadata(task, sequence_index),
+                            **event.payload,
+                            "status": "ok",
+                            "reference": dataset.reference_for(task.operation),
+                            "is_correct": validation.is_correct,
+                            "absolute_error": validation.absolute_error,
+                            "relative_error": validation.relative_error,
+                            "validation_tolerance": validation.tolerance,
+                            "dataset_sha256": dataset.metadata["sha256"],
+                            "accumulator_semantics": "native_input_dtype",
+                            "cpu_work_fraction": (cpu_elements / processed) if processed else 0.0,
+                            "gpu_work_fraction": (gpu_elements / processed) if processed else 0.0,
+                            "processed_elements": processed,
+                            "e2e_us_per_logical_reduction": (
+                                float(event.payload.get("e2e_us", 0.0)) / max(1, event_logical)
+                            ),
+                        })
                     elif event.event == "done":
                         break
                     elif event.event == "error":
@@ -441,7 +437,7 @@ class ExperimentRunner:
                     assert energy_metrics is not None
                     assert measured is not None
                     assert energy_validation is not None
-                    batch_energy = self._energy_record(
+                    self.results.append_energy_batch(self._energy_record(
                         task,
                         sequence_index,
                         energy_repetitions,
@@ -452,40 +448,40 @@ class ExperimentRunner:
                         energy_timestamp_end,
                         cpu_energy_enabled,
                         gpu_energy_enabled,
-                    )
-                    self.results.append_energy_batch(batch_energy)
+                    ))
 
                 self._capture_telemetry(task, sequence_index, "post_task")
-                self.results.append_task(
-                    {
-                        **self._task_metadata(task, sequence_index),
-                        "status": "invalid" if fatal_numerical_mismatch else "ok",
-                        "numerical_mismatch_count": numerical_mismatches,
-                        "numerical_validation_passed": numerical_mismatches == 0,
-                        "timestamp_start": task_started_iso,
-                        "timestamp_end": utc_now_iso(),
-                        "duration_s": time.monotonic() - task_monotonic_start,
-                        "timing_timestamp_start": timing_timestamp_start,
-                        "timing_timestamp_end": timing_timestamp_end,
-                        "energy_timestamp_start": energy_timestamp_start,
-                        "energy_timestamp_end": energy_timestamp_end,
-                        "timing_repetitions": timing_repetitions,
-                        "timing_repetitions_mode": "auto" if self.config.measurement.timing_repetitions == "auto" else "fixed",
-                        "timing_probe_mean_us": timing_probe_mean_us,
-                        "timing_probe_wall_us": timing_probe_wall_us,
-                        "energy_batch_repetitions": energy_repetitions,
-                        "warmup_median_us": ready.payload.get("warmup_median_us"),
-                        "strategy_create_us": ready.payload.get("strategy_create_us"),
-                        "prepare_us": ready.payload.get("prepare_us"),
-                        "dataset_replica_count": ready.payload.get("dataset_replica_count"),
-                        "dataset_resident_bytes": ready.payload.get("dataset_resident_bytes"),
-                        "prepare_metrics": ready.payload.get("prepare_metrics", {}),
-                        "timing_batch_wall_us": timing_done.payload.get("batch_wall_us"),
-                        "energy_batch_wall_us": measured.payload.get("batch_wall_us") if measured else None,
-                        "dataset_sha256": dataset.metadata["sha256"],
-                        "accumulator_semantics": "native_input_dtype",
-                    }
-                )
+                timing_mean_us = float(timing_done.payload.get("mean_iteration_us", 0.0))
+                self.results.append_task({
+                    **self._task_metadata(task, sequence_index),
+                    "status": "invalid" if fatal_numerical_mismatch else "ok",
+                    "numerical_mismatch_count": numerical_mismatches,
+                    "numerical_validation_passed": numerical_mismatches == 0,
+                    "timestamp_start": task_started_iso,
+                    "timestamp_end": utc_now_iso(),
+                    "duration_s": time.monotonic() - task_monotonic_start,
+                    "timing_timestamp_start": timing_timestamp_start,
+                    "timing_timestamp_end": timing_timestamp_end,
+                    "energy_timestamp_start": energy_timestamp_start,
+                    "energy_timestamp_end": energy_timestamp_end,
+                    "timing_repetitions": timing_repetitions,
+                    "logical_reductions_per_iteration": logical_per_iteration,
+                    "timing_mean_us_per_logical_reduction": timing_mean_us / max(1, logical_per_iteration),
+                    "timing_repetitions_mode": "auto" if self.config.measurement.timing_repetitions == "auto" else "fixed",
+                    "timing_probe_mean_us": timing_probe_mean_us,
+                    "timing_probe_wall_us": timing_probe_wall_us,
+                    "energy_batch_repetitions": energy_repetitions,
+                    "warmup_median_us": ready.payload.get("warmup_median_us"),
+                    "strategy_create_us": ready.payload.get("strategy_create_us"),
+                    "prepare_us": ready.payload.get("prepare_us"),
+                    "dataset_replica_count": ready.payload.get("dataset_replica_count"),
+                    "dataset_resident_bytes": ready.payload.get("dataset_resident_bytes"),
+                    "prepare_metrics": ready.payload.get("prepare_metrics", {}),
+                    "timing_batch_wall_us": timing_done.payload.get("batch_wall_us"),
+                    "energy_batch_wall_us": measured.payload.get("batch_wall_us") if measured else None,
+                    "dataset_sha256": dataset.metadata["sha256"],
+                    "accumulator_semantics": "native_input_dtype",
+                })
             finally:
                 if process.poll() is None:
                     process.terminate()
@@ -504,12 +500,10 @@ class ExperimentRunner:
             return
         cpu_ids = sorted(set(task.cpu_affinity + task.gpu_worker_cpus))
         snapshot = self.telemetry.snapshot(phase, cpu_ids, task.gpu_ids)
-        self.results.append_telemetry(
-            {
-                **self._task_metadata(task, sequence_index),
-                **snapshot,
-            }
-        )
+        self.results.append_telemetry({
+            **self._task_metadata(task, sequence_index),
+            **snapshot,
+        })
 
     def _read_worker_event(self, stream: Any, timeout_s: float | None = None):
         return read_event(
@@ -555,7 +549,8 @@ class ExperimentRunner:
         gpu_nodes = []
         by_gpu = {gpu.index: gpu for gpu in self.topology.gpus}
         for gpu_id in task.gpu_ids:
-            node = by_gpu.get(gpu_id).numa_node if by_gpu.get(gpu_id) is not None else None
+            gpu = by_gpu.get(gpu_id)
+            node = gpu.numa_node if gpu is not None else None
             gpu_nodes.append(-1 if node is None else int(node))
 
         cmd = [
@@ -570,6 +565,7 @@ class ExperimentRunner:
             "--transfer-policy", task.algorithm.transfer_policy or "sync",
             "--memory-path", task.algorithm.memory_path or "default",
             "--storage-policy", task.algorithm.storage_policy,
+            "--gpu-staging-numa", task.gpu_staging_numa,
             "--gpus", ",".join(map(str, task.gpu_ids)),
             "--gpu-numa-nodes", ",".join(map(str, gpu_nodes)),
             "--cpu-affinity", ",".join(map(str, task.cpu_affinity)),
@@ -595,7 +591,12 @@ class ExperimentRunner:
         ]
         if bool(params["use_cuda_graphs"]):
             cmd.append("--cuda-graphs")
-        if task.algorithm.storage_policy == "host_resident" and task.memory_policy == "interleave" and shutil.which("numactl") and self.topology.numa_nodes:
+        if (
+            task.algorithm.storage_policy == "host_resident"
+            and task.memory_policy == "interleave"
+            and shutil.which("numactl")
+            and self.topology.numa_nodes
+        ):
             nodes = ",".join(map(str, sorted(self.topology.numa_nodes)))
             return ["numactl", f"--interleave={nodes}", *cmd]
         return cmd
@@ -668,6 +669,7 @@ class ExperimentRunner:
             "gpu_control_bindings": task.gpu_control_bindings,
             "gpu_control_mode": task.gpu_control_mode,
             "memory_policy": task.memory_policy,
+            "gpu_staging_numa": task.gpu_staging_numa,
         }
 
     def _energy_record(
@@ -694,19 +696,29 @@ class ExperimentRunner:
             measured_parts.append("gpu")
         coverage = "+".join(measured_parts) if measured_parts else "none"
         requested_parts = [name for name, flag in (("cpu_package", cpu_requested), ("gpu", gpu_requested)) if flag]
+        logical_per_iteration = int(
+            worker_batch.get(
+                "logical_reductions_per_iteration",
+                task.algorithm_params.get("reuse_count", 1),
+            )
+            or 1
+        )
+        logical_reductions = repetitions * logical_per_iteration
         return {
             **self._task_metadata(task, sequence_index),
             "status": "ok",
             "timestamp_start": timestamp_start,
             "timestamp_end": timestamp_end,
             "repetitions": repetitions,
+            "logical_reductions_per_iteration": logical_per_iteration,
+            "logical_reductions": logical_reductions,
             "cpu_package_energy_j": cpu,
             "gpu_energy_j": gpu,
             "measured_component_energy_j": measured,
-            "cpu_package_energy_per_reduction_j": (float(cpu) / repetitions) if cpu is not None else None,
-            "gpu_energy_per_reduction_j": (float(gpu) / repetitions) if gpu is not None else None,
-            "measured_component_energy_per_reduction_j": (measured / repetitions) if measured is not None else None,
-            "total_energy_per_reduction_j": (measured / repetitions) if measured is not None else None,
+            "cpu_package_energy_per_reduction_j": (float(cpu) / logical_reductions) if cpu is not None else None,
+            "gpu_energy_per_reduction_j": (float(gpu) / logical_reductions) if gpu is not None else None,
+            "measured_component_energy_per_reduction_j": (measured / logical_reductions) if measured is not None else None,
+            "total_energy_per_reduction_j": (measured / logical_reductions) if measured is not None else None,
             "energy_coverage": coverage,
             "energy_requested_components": requested_parts,
             "energy_complete_for_requested_components": set(measured_parts) == set(requested_parts),
