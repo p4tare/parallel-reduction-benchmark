@@ -1,27 +1,27 @@
 from __future__ import annotations
 
 import argparse
-import os
 import json
+import os
 import shutil
 import sys
 import time
-
-import psutil
 from pathlib import Path
 
+import psutil
+
 from .build import BuildError, CMakeBuilder
+from .capacity import cache_rotation_replicas, dataset_size_bytes, gpu_capacity_rows
 from .catalog import AlgorithmCatalog
 from .config import ConfigurationLoader
 from .datasets import DatasetFactory
-from .capacity import cache_rotation_replicas, dataset_size_bytes, gpu_capacity_rows
 from .energy import NvmlEnergyMeter, RaplEnergyMeter
 from .manifest import create_manifest
 from .results import ResultsStore
 from .runner import ExperimentRunner
 from .sweep import SweepPlanner
-from .topology import SystemTopology, enrich_cpu_core_classes
 from .telemetry import TelemetryCollector
+from .topology import SystemTopology, enrich_cpu_core_classes
 from .utils import command_output
 
 try:
@@ -34,14 +34,78 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def _format_bytes(value: int | float) -> str:
+    number = float(value)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if abs(number) < 1024.0 or unit == "TiB":
+            return f"{number:.2f} {unit}"
+        number /= 1024.0
+    return f"{number:.2f} TiB"
+
+
+def _format_duration(seconds: float) -> str:
+    seconds = max(0, int(round(seconds)))
+    hours, rem = divmod(seconds, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+
 def cmd_list_algorithms(args: argparse.Namespace) -> int:
     catalog = AlgorithmCatalog()
     for item in catalog.all():
         print(
-            f"{item.id:31} | {item.role:28} | CPU={item.uses_cpu!s:5} "
-            f"GPU={item.uses_gpu!s:5} | {item.label}"
+            f"{item.id:34} | {item.role:30} | CPU={item.uses_cpu!s:5} "
+            f"GPU={item.uses_gpu!s:5} | storage={item.storage_policy:13} "
+            f"path={item.memory_path or '-':18} | {item.label}"
         )
     return 0
+
+
+def _gds_diagnostics() -> dict[str, object]:
+    modules = ""
+    try:
+        modules = Path("/proc/modules").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        pass
+    libcufile = next(
+        (
+            candidate
+            for candidate in (
+                "/usr/lib/x86_64-linux-gnu/libcufile.so",
+                "/usr/local/cuda/lib64/libcufile.so",
+                "/usr/local/cuda/targets/x86_64-linux/lib/libcufile.so",
+            )
+            if Path(candidate).exists()
+        ),
+        None,
+    )
+    return {
+        "libcufile": libcufile,
+        "gdscheck": shutil.which("gdscheck") or shutil.which("gdscheck.py"),
+        "nvidia_fs_module_loaded": "nvidia_fs " in modules,
+        "nvidia_fs_device": Path("/dev/nvidia-fs").exists(),
+    }
+
+
+def _hmm_diagnostics() -> dict[str, object]:
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        return {"addressing_mode_lines": [], "hmm_reported": False}
+    try:
+        output = command_output([smi, "-q"])
+    except Exception:
+        output = None
+    lines = [
+        line.strip()
+        for line in (output or "").splitlines()
+        if "Addressing Mode" in line
+    ]
+    return {
+        "addressing_mode_lines": lines,
+        "hmm_reported": any("HMM" in line for line in lines),
+    }
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
@@ -70,6 +134,12 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         "rapl_diagnostics": RaplEnergyMeter.diagnostics(),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "gpu_energy_diagnostics": NvmlEnergyMeter.diagnostics([g.index for g in topology.gpus]),
+        "memory_path_capabilities": {
+            "hmm": _hmm_diagnostics(),
+            "gds": _gds_diagnostics(),
+            "libnuma_header": Path("/usr/include/numa.h").exists(),
+            "numactl": shutil.which("numactl"),
+        },
         "project_root": str(_project_root()),
         "toolchain": {
             "cmake": tool("cmake"),
@@ -102,7 +172,11 @@ def cmd_build(args: argparse.Namespace) -> int:
     topology = SystemTopology().discover()
     artifact = CMakeBuilder(root).build(config.build, topology)
     topology = enrich_cpu_core_classes(artifact.worker_path, topology)
-    print(json.dumps({"worker": str(artifact.worker_path), **artifact.metadata, "topology": topology.model_dump(mode="json")}, indent=2, default=str))
+    print(json.dumps({
+        "worker": str(artifact.worker_path),
+        **artifact.metadata,
+        "topology": topology.model_dump(mode="json"),
+    }, indent=2, default=str))
     return 0
 
 
@@ -134,9 +208,6 @@ def cmd_run(args: argparse.Namespace) -> int:
     results.write_manifest(create_manifest(root, config, topology, artifact.metadata))
     factory = DatasetFactory(config.dataset_cache_dir)
 
-    # Materialize every unique dataset before the randomized measurement sequence.
-    # Lazy generation would heat the CPU and storage path only before the first task that
-    # happens to use a dataset, creating an avoidable order-dependent thermal confounder.
     unique_datasets = {}
     for task in tasks:
         key = task.dataset.model_dump_json()
@@ -144,30 +215,54 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"Preparing {len(unique_datasets)} unique dataset(s) before measurements...", flush=True)
     dataset_manifest: list[dict[str, object]] = []
     for dataset_index, dataset_spec in enumerate(unique_datasets.values(), start=1):
+        size_bytes = dataset_size_bytes(dataset_spec)
+        cached = factory.cached_artifact(dataset_spec)
         print(
-            f"  dataset [{dataset_index}/{len(unique_datasets)}] N={dataset_spec.size} dtype={dataset_spec.dtype.value}",
+            f"  dataset [{dataset_index}/{len(unique_datasets)}] N={dataset_spec.size} "
+            f"dtype={dataset_spec.dtype.value} size={_format_bytes(size_bytes)} "
+            f"({'cached' if cached else 'generate'})",
             flush=True,
         )
-        dataset_artifact = factory.get_or_create(dataset_spec)
-        dataset_manifest.append(
-            {
-                "spec": dataset_spec.model_dump(mode="json"),
-                "data_path": str(dataset_artifact.data_path),
-                "metadata_path": str(dataset_artifact.metadata_path),
-                "metadata": dataset_artifact.metadata,
-            }
-        )
+        last_bucket = {-1}
+
+        def progress(done: int, total: int) -> None:
+            if total <= 0:
+                return
+            percent = int(done * 100 / total)
+            bucket = min(100, (percent // 5) * 5)
+            if done == total:
+                bucket = 100
+            if bucket <= last_bucket.pop():
+                last_bucket.add(bucket)
+                return
+            last_bucket.add(bucket)
+            written_bytes = int(size_bytes * (done / total))
+            print(
+                f"    {bucket:3d}%  {_format_bytes(written_bytes)} / {_format_bytes(size_bytes)}",
+                flush=True,
+            )
+
+        dataset_artifact = factory.get_or_create(dataset_spec, progress=progress)
+        dataset_manifest.append({
+            "spec": dataset_spec.model_dump(mode="json"),
+            "data_path": str(dataset_artifact.data_path),
+            "metadata_path": str(dataset_artifact.metadata_path),
+            "metadata": dataset_artifact.metadata,
+        })
     results.write_dataset_manifest(dataset_manifest)
 
     runner = ExperimentRunner(artifact.worker_path, config, topology, factory, results)
 
     print(f"Run directory: {results.run_dir}", flush=True)
     print(f"Planned task instances: {len(tasks)}", flush=True)
+    campaign_started = time.monotonic()
+    completed_durations: list[float] = []
     for index, task in enumerate(tasks, start=1):
         print(
             f"[{index}/{len(tasks)}] {task.algorithm.id} "
-            f"op={task.operation.value} N={task.dataset.size} dtype={task.dataset.dtype.value} GPUs={task.gpu_ids} "
-            f"block={task.block_index + 1}/{config.measurement.blocks}",
+            f"op={task.operation.value} N={task.dataset.size} dtype={task.dataset.dtype.value} "
+            f"GPUs={task.gpu_ids} storage={task.algorithm.storage_policy} "
+            f"path={task.algorithm.memory_path or '-'} block={task.block_index + 1}/{config.measurement.blocks}",
             flush=True,
         )
         task_started = time.monotonic()
@@ -182,7 +277,16 @@ def cmd_run(args: argparse.Namespace) -> int:
                 flush=True,
             )
             return 130
-        print(f"  completed in {time.monotonic() - task_started:.2f}s", flush=True)
+        duration = time.monotonic() - task_started
+        completed_durations.append(duration)
+        elapsed = time.monotonic() - campaign_started
+        mean_task = sum(completed_durations) / len(completed_durations)
+        eta = mean_task * (len(tasks) - index)
+        print(
+            f"  completed in {duration:.2f}s | campaign elapsed={_format_duration(elapsed)} "
+            f"ETA~{_format_duration(eta)}",
+            flush=True,
+        )
     results.write_summary()
     counts = results.task_status_counts()
     final_status = "completed_with_errors" if counts.get("failed", 0) or counts.get("invalid", 0) else "completed"
@@ -194,9 +298,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         for row in problems:
             detail = row.get("error")
             if not detail and row.get("status") == "invalid":
-                detail = (
-                    f"numerical mismatch count={row.get('numerical_mismatch_count', 'unknown')}"
-                )
+                detail = f"numerical mismatch count={row.get('numerical_mismatch_count', 'unknown')}"
             print(
                 "  "
                 f"status={row.get('status')} algorithm={row.get('algorithm_id')} "
@@ -205,7 +307,10 @@ def cmd_run(args: argparse.Namespace) -> int:
                 f"task={row.get('task_instance_id')} reason={detail or 'unspecified'}",
                 flush=True,
             )
-    print(f"Finished. Results: {results.run_dir}", flush=True)
+    print(
+        f"Finished in {_format_duration(time.monotonic() - campaign_started)}. Results: {results.run_dir}",
+        flush=True,
+    )
     if counts.get("failed", 0) or counts.get("invalid", 0):
         print("One or more task instances failed or produced invalid results.", file=sys.stderr)
         return 3
@@ -248,12 +353,6 @@ def _gpu_processes(gpu_ids: list[int]) -> tuple[dict[str, list[int]], dict[str, 
 
 
 def _cuda_visible_devices_problem(topology) -> str | None:
-    """Fail fast when CUDA logical IDs can differ from NVML physical indices.
-
-    The current worker intentionally uses the same integer IDs for CUDA and NVML.
-    An identity CUDA_VISIBLE_DEVICES list is safe; masks/reordering would make energy,
-    telemetry and CUDA execution refer to different physical devices.
-    """
     raw = os.environ.get("CUDA_VISIBLE_DEVICES")
     if raw is None or raw.strip() == "":
         return None
@@ -272,8 +371,8 @@ def _cuda_visible_devices_problem(topology) -> str | None:
         )
     return None
 
+
 def _design_warnings(tasks) -> list[str]:
-    """Detect common confounding patterns across otherwise comparable tasks."""
     from collections import defaultdict
 
     warnings: list[str] = []
@@ -289,10 +388,6 @@ def _design_warnings(tasks) -> list[str]:
         core_ops[base][task.cpu_core_class].add(task.operation.value)
         if task.gpu_ids:
             control_ops[base + (task.cpu_core_class,)][task.gpu_control_mode].add(task.operation.value)
-
-        # When dtype is intended as the compared factor, changing distribution at the
-        # same time makes the effect ambiguous. We cannot know the research intent, so
-        # this is a warning rather than a fatal error.
         dtype_base = (
             task.group_id, task.algorithm.id, task.dataset.size, task.operation.value,
             tuple(task.gpu_ids), tuple(sorted(task.algorithm_params.items())),
@@ -387,44 +482,62 @@ def _evaluate_preflight(config, topology, tasks) -> dict[str, object]:
         if "performance" not in classes or "efficiency" not in classes:
             fatal.append(f"P/E-core experiment requested but native core classification is incomplete: {classes}")
 
-    # Reject impossible host datasets before the generator creates a huge cache file.
     ram_limit = int(topology.total_ram_bytes * config.measurement.max_dataset_ram_fraction)
     available_ram = int(psutil.virtual_memory().available)
-    dataset_checks: dict[tuple, dict[str, object]] = {}
+    cache_dir = Path(config.dataset_cache_dir)
+    factory = DatasetFactory(cache_dir)
+    disk = shutil.disk_usage(cache_dir)
+    storage_growth_limit = int(disk.free * config.measurement.max_dataset_storage_fraction_of_free)
+    missing_storage_bytes = 0
+
+    dataset_checks: dict[str, dict[str, object]] = {}
+    tasks_by_dataset: dict[str, list[object]] = {}
     for task in tasks:
-        key = (task.dataset.size, task.dataset.dtype.value, task.dataset.seed, task.dataset.distribution.value)
-        if key in dataset_checks:
-            continue
+        tasks_by_dataset.setdefault(task.dataset.model_dump_json(), []).append(task)
+
+    for key, related in tasks_by_dataset.items():
+        task = related[0]
         size = dataset_size_bytes(task.dataset)
+        cached = factory.cached_artifact(task.dataset) is not None
+        if not cached:
+            missing_storage_bytes += size
+        host_required = any(t.algorithm.storage_policy == "host_resident" for t in related)
         target = int(config.measurement.cache_rotation_target_bytes)
-        replicas = cache_rotation_replicas(
-            size, target, config.measurement.cache_rotation_max_replicas
-        )
-        resident = size * replicas
+        replicas = cache_rotation_replicas(size, target, config.measurement.cache_rotation_max_replicas)
+        resident = size * replicas if host_required else 0
+        storage_policies = sorted({t.algorithm.storage_policy for t in related})
         item = {
             "dataset_size": task.dataset.size,
             "dtype": task.dataset.dtype.value,
             "size_bytes": size,
-            "cache_rotation_replicas": replicas,
+            "cached": cached,
+            "storage_policies": storage_policies,
+            "host_resident_required": host_required,
+            "cache_rotation_replicas": replicas if host_required else 0,
             "estimated_worker_resident_bytes": resident,
             "configured_ram_limit_bytes": ram_limit,
             "available_ram_bytes_at_preflight": available_ram,
         }
         dataset_checks[key] = item
-        if resident > ram_limit:
+        if host_required and resident > ram_limit:
             fatal.append(
-                f"dataset {task.dataset.size}x{task.dataset.dtype.value} requires about {resident} resident bytes "
-                f"with cache rotation ({replicas} replicas), exceeding max_dataset_ram_fraction budget "
-                f"{ram_limit} bytes"
+                f"host-resident dataset {task.dataset.size}x{task.dataset.dtype.value} requires about {resident} "
+                f"resident bytes, exceeding max_dataset_ram_fraction budget {ram_limit}; use a file_stream "
+                "algorithm for out-of-core execution"
             )
-        elif resident > int(available_ram * 0.85):
+        elif host_required and resident > int(available_ram * 0.85):
             warnings.append(
-                f"cache-rotated dataset {task.dataset.size}x{task.dataset.dtype.value} consumes >85% of currently "
+                f"host-resident dataset {task.dataset.size}x{task.dataset.dtype.value} consumes >85% of currently "
                 "available RAM; page cache/worker/CUDA allocations may cause memory pressure"
             )
 
-    # Device-memory feasibility. Exact estimates can fail-fast; model-based/reference
-    # estimates are reported as warnings because the final partition is data-dependent.
+    if missing_storage_bytes > storage_growth_limit:
+        fatal.append(
+            f"missing dataset cache files require about {_format_bytes(missing_storage_bytes)}, but the configured "
+            f"storage growth budget is {_format_bytes(storage_growth_limit)} "
+            f"({config.measurement.max_dataset_storage_fraction_of_free:.0%} of {_format_bytes(disk.free)} free)"
+        )
+
     gpu_memory_rows: list[dict[str, object]] = []
     seen_memory: set[tuple] = set()
     for task in tasks:
@@ -444,9 +557,8 @@ def _evaluate_preflight(config, topology, tasks) -> dict[str, object]:
             if row["estimate_kind"] == "exact":
                 fatal.append(message)
             else:
-                warnings.append(message + "; final model-based partition may still fit")
+                warnings.append(message + "; final model-based/managed placement may still fit")
 
-    # Multi-GPU topology checks.
     by_gpu = {g.index: g for g in topology.gpus}
     multi_sets = sorted({tuple(t.gpu_ids) for t in tasks if len(t.gpu_ids) > 1})
     for gpu_set in multi_sets:
@@ -461,10 +573,15 @@ def _evaluate_preflight(config, topology, tasks) -> dict[str, object]:
         nodes = {g.numa_node for g in selected if g.numa_node is not None}
         if len(nodes) > 1:
             warnings.append(
-                f"GPU set {list(gpu_set)} spans NUMA nodes {sorted(nodes)}. Current host dataset is one shared "
-                "allocation; memory_policy=interleave is reproducible but is not per-GPU NUMA-local placement. "
-                "Report this as a topology limitation when interpreting multi-GPU H2D scaling."
+                f"GPU set {list(gpu_set)} spans NUMA nodes {sorted(nodes)}. Integrated registered/file-stream "
+                "staging requests per-GPU NUMA placement when libnuma is available; verify numa_applied in results."
             )
+
+    if any(t.algorithm.memory_path == "hmm_system" for t in tasks) and not _hmm_diagnostics()["hmm_reported"]:
+        warnings.append("HMM was requested but nvidia-smi does not report Addressing Mode: HMM; those tasks should capability-skip")
+    gds = _gds_diagnostics()
+    if any(t.algorithm.storage_policy == "gds" for t in tasks) and not gds.get("libcufile"):
+        warnings.append("GDS was requested but libcufile is not present; GDS tasks should capability-skip")
 
     warnings.extend(_design_warnings(tasks))
     if any(
@@ -504,13 +621,25 @@ def _evaluate_preflight(config, topology, tasks) -> dict[str, object]:
         "nvml_available": topology.nvml_available,
         "cpu_load_percent": cpu_load,
         "dataset_capacity": list(dataset_checks.values()),
+        "dataset_cache_storage": {
+            "path": str(cache_dir.resolve()),
+            "free_bytes": disk.free,
+            "missing_dataset_bytes": missing_storage_bytes,
+            "configured_growth_limit_bytes": storage_growth_limit,
+        },
+        "memory_path_capabilities": {
+            "hmm": _hmm_diagnostics(),
+            "gds": gds,
+            "libnuma_header": Path("/usr/include/numa.h").exists(),
+        },
         "warnings": warnings,
         "fatal": fatal,
         "note": (
-            "For thesis energy measurements reserve the whole node/selected GPUs exclusively. "
-            "RAPL is package-wide; multi-GPU host memory is currently one shared allocation."
+            "Host-resident RAM limits and file-stream storage limits are evaluated separately. "
+            "For thesis energy measurements reserve the whole node/selected GPUs exclusively."
         ),
     }
+
 
 def cmd_preflight(args: argparse.Namespace) -> int:
     root = _project_root()
@@ -543,6 +672,8 @@ def cmd_plan(args: argparse.Namespace) -> int:
                 "sequence_index": i,
                 "group_id": t.group_id,
                 "algorithm_id": t.algorithm.id,
+                "memory_path": t.algorithm.memory_path,
+                "storage_policy": t.algorithm.storage_policy,
                 "dataset_size": t.dataset.size,
                 "dtype": t.dataset.dtype.value,
                 "operation": t.operation.value,
@@ -580,7 +711,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--config", required=True)
     p.set_defaults(func=cmd_plan)
 
-    p = sub.add_parser("preflight", help="validate topology, energy access and machine idleness before a research run")
+    p = sub.add_parser("preflight", help="validate topology, energy access, storage and machine idleness")
     p.add_argument("--config", required=True)
     p.set_defaults(func=cmd_preflight)
 
