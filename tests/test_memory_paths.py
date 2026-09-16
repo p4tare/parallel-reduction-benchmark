@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from prbench.memory_paths import MemoryPathStudyConfig, build_tasks
-from prbench.models import DatasetSpec, DType, Distribution, QuantizationConfig, QuantizationMode
+from prbench.memory_paths import MemoryPathStudyConfig, _execution_policy, build_tasks
+from prbench.models import DatasetSpec, Distribution, DType, QuantizationConfig, QuantizationMode
 
 
 def _dataset() -> DatasetSpec:
@@ -31,8 +31,6 @@ def test_memory_path_task_expansion_is_deterministic() -> None:
     first = build_tasks(cfg)
     second = build_tasks(cfg)
     assert first == second
-    # explicit: 2 reuse * 1 chunk/stream representative = 2 tasks/block
-    # async: 2 reuse * 2 chunks * 2 stream counts = 8 tasks/block
     assert len(first) == 20
 
 
@@ -53,9 +51,31 @@ def test_device_resident_diagnostic_is_added_once() -> None:
     assert modes.count("explicit_sync") == 1
 
 
-def test_large_dataset_fraction_guard_is_configurable() -> None:
+def test_host_resident_fraction_is_routing_boundary_not_dataset_cap() -> None:
     cfg = MemoryPathStudyConfig(
         datasets=[_dataset()],
-        max_dataset_ram_fraction=0.75,
+        host_resident_ram_fraction=0.75,
     )
-    assert cfg.max_dataset_ram_fraction == 0.75
+    assert cfg.host_resident_ram_fraction == 0.75
+
+
+def test_dataset_larger_than_ram_routes_streaming_modes_out_of_core() -> None:
+    cfg = MemoryPathStudyConfig(
+        datasets=[_dataset()],
+        operations=["sum"],
+        modes=["chunked_sync", "zero_copy"],
+        gpu_ids=[0],
+        reuse_counts=[1],
+        chunk_elements=[256],
+        pipeline_streams=[2],
+        blocks=1,
+        include_device_resident_diagnostic=False,
+    )
+    tasks = {task.mode: task for task in build_tasks(cfg)}
+    policy, reason = _execution_policy(tasks["chunked_sync"], 2_000, 1_000)
+    assert policy == "file_stream"
+    assert reason is None
+
+    policy, reason = _execution_policy(tasks["zero_copy"], 2_000, 1_000)
+    assert policy == "unsupported_out_of_core"
+    assert reason is not None
