@@ -18,7 +18,10 @@ struct WorkerConfig {
     CpuBackendKind cpu_backend{CpuBackendKind::Sequential};
     GpuBackendKind gpu_backend{GpuBackendKind::None};
     TransferPolicy transfer_policy{TransferPolicy::Sync};
+    std::string memory_path{"default"};
+    std::string storage_policy{"host_resident"};
     std::vector<int> gpu_ids;
+    std::vector<int> gpu_numa_nodes;
     std::vector<int> cpu_affinity;
     std::vector<int> gpu_worker_cpus;
     int cpu_threads{1};
@@ -37,6 +40,9 @@ struct WorkerConfig {
     int pipeline_streams{4};
     int pipeline_chunks{16};
     std::size_t pipeline_chunk_elements{0};
+    int reuse_count{1};
+    double cpu_fraction{-1.0};
+    bool use_cuda_graphs{false};
     bool self_test{false};
     bool build_info{false};
     bool probe_cpu_types{false};
