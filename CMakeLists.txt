@@ -25,6 +25,32 @@ if(PRBENCH_ENABLE_CUDA)
     include(CheckLanguage)
     check_language(CUDA)
     if(CMAKE_CUDA_COMPILER)
+        # prbench mixes C++ translation units and CUDA translation units in the same
+        # executable. Using a different libstdc++/C++ ABI for NVCC's host side can
+        # therefore produce late linker failures such as an unresolved
+        # __cxa_call_terminate. Keep both sides on the exact same compiler.
+        if(DEFINED CMAKE_CUDA_HOST_COMPILER AND NOT CMAKE_CUDA_HOST_COMPILER STREQUAL "")
+            get_filename_component(PRBENCH_CXX_COMPILER_REAL "${CMAKE_CXX_COMPILER}" REALPATH)
+            get_filename_component(PRBENCH_CUDA_HOST_COMPILER_REAL "${CMAKE_CUDA_HOST_COMPILER}" REALPATH)
+            if(NOT PRBENCH_CXX_COMPILER_REAL STREQUAL PRBENCH_CUDA_HOST_COMPILER_REAL)
+                message(FATAL_ERROR
+                    "prbench requires CMAKE_CXX_COMPILER and CMAKE_CUDA_HOST_COMPILER to be the same compiler. "
+                    "Detected C++=${CMAKE_CXX_COMPILER}, CUDA host=${CMAKE_CUDA_HOST_COMPILER}. "
+                    "On apl13 configure with: "
+                    "-DCMAKE_CXX_COMPILER=/usr/bin/g++-13 "
+                    "-DCMAKE_CUDA_HOST_COMPILER=/usr/bin/g++-13")
+            endif()
+        else()
+            set(
+                CMAKE_CUDA_HOST_COMPILER
+                "${CMAKE_CXX_COMPILER}"
+                CACHE FILEPATH
+                "Host compiler used by NVCC; kept equal to CMAKE_CXX_COMPILER"
+                FORCE
+            )
+            message(STATUS "NVCC host compiler pinned to C++ compiler: ${CMAKE_CXX_COMPILER}")
+        endif()
+
         enable_language(CUDA)
         find_package(CUDAToolkit REQUIRED)
         list(APPEND PRBENCH_SOURCES native/src/gpu_backend.cu)
