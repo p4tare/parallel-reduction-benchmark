@@ -3,8 +3,9 @@
 output_dir: results/apl13_reuse_tuning
 dataset_cache_dir: .prbench/datasets
 worker: build/prbench-memory-path-worker
+file_stream_worker: build/prbench-file-stream-worker
 
-max_dataset_ram_fraction: 0.70
+host_resident_ram_fraction: 0.70
 warmup: 1
 repetitions: 3
 blocks: 3
@@ -26,7 +27,7 @@ modes:
   - managed_prefetch
   - managed_advised
 
-# Keep reuse study initially below single-GPU VRAM so residency can be measured cleanly.
+# Reuse study stays initially below one-GPU VRAM so one-time placement can be amortized cleanly.
 datasets:
   - {size: 268435456, dtype: float32, distribution: uniform, seed: 51101, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
   - {size: 2147483648, dtype: float32, distribution: uniform, seed: 51101, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
