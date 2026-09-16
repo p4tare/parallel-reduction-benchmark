@@ -106,6 +106,10 @@ class HardwareConfig(StrictModel):
     gpu_sets: list[Any] = Field(default_factory=lambda: ["each"])
     gpu_control_mode: GpuControlMode = GpuControlMode.dedicated
     memory_policy: Literal["default", "interleave"] = "interleave"
+    # Staging buffers used by registered/pipelined GPU transfers can be placed on the
+    # NUMA node reported for each GPU. `auto` uses local placement when libnuma is built,
+    # `off` uses portable CUDA host allocation, and `strict` fails instead of falling back.
+    gpu_staging_numa: Literal["auto", "off", "strict"] = "auto"
 
     @field_validator("cpu_explicit_ids")
     @classmethod
@@ -123,21 +127,13 @@ class HardwareConfig(StrictModel):
 
 class MeasurementConfig(StrictModel):
     warmup_runs: int = Field(default=5, ge=1)
-    # Repetitions per burst and independent bursts per calibration point for
-    # profiled/adaptive schedulers. Each burst is reduced to a median, then the
-    # median of burst-medians is used. Calibration remains outside TIMING.
     scheduler_calibration_repetitions: int = Field(default=5, ge=1, le=100)
     scheduler_calibration_bursts: int = Field(default=3, ge=1, le=9)
-    # Fixed repetition count or an automatically sized timing batch. Auto mode runs
-    # a short unrecorded probe after warm-up and targets timing_target_batch_seconds.
     timing_repetitions: int | Literal["auto"] = "auto"
     timing_probe_repetitions: int = Field(default=10, ge=3, le=1000)
     timing_target_batch_seconds: float = Field(default=0.5, gt=0.01, le=30.0)
     timing_min_repetitions: int = Field(default=30, ge=3)
     timing_max_repetitions: int = Field(default=100_000, ge=3, le=1_000_000)
-    # Rotate between identical host replicas during warm-up/probe/timing/energy so
-    # short CPU reductions do not benchmark one permanently hot cache-resident buffer.
-    # Replicas are materialized before timing; pointer rotation itself is outside e2e timing.
     cache_rotation_target_bytes: int = Field(default=268_435_456, ge=0, le=4_294_967_296)
     cache_rotation_max_replicas: int = Field(default=64, ge=1, le=1024)
     energy_batch_repetitions: int | Literal["auto"] = "auto"
@@ -146,16 +142,17 @@ class MeasurementConfig(StrictModel):
     energy_max_repetitions: int = Field(default=1_000_000, ge=1)
     blocks: int = Field(default=3, ge=1, le=100)
     randomization_seed: int = 20260813
+    # Applies only to algorithms whose catalog storage_policy is host_resident.
+    # file_stream/GDS algorithms are instead guarded by storage-capacity preflight.
     max_dataset_ram_fraction: float = Field(default=0.65, gt=0.05, le=0.95)
-    # Preflight/runtime headroom for device allocations.  The estimator accounts for
-    # input buffers; the remaining VRAM is intentionally left for CUB temporary storage,
-    # CUDA context/runtime allocations and display/driver use.
+    # Before generating missing cached datasets, keep this fraction of currently free
+    # filesystem space as the maximum dataset-cache growth budget.
+    max_dataset_storage_fraction_of_free: float = Field(default=0.90, gt=0.05, le=0.98)
     gpu_memory_safety_fraction: float = Field(default=0.80, gt=0.20, le=0.95)
     thermal_safety_gpu_c: float = Field(default=90.0, ge=40.0, le=110.0)
     thermal_safety_cpu_c: float = Field(default=95.0, ge=40.0, le=115.0)
     thermal_wait_timeout_s: float = Field(default=300.0, ge=0.0)
     worker_event_timeout_s: float = Field(default=1800.0, gt=0.0, le=86400.0)
-    # Thesis-grade gate: convert environmental contamination warnings into hard failures.
     strict_preflight: bool = False
     max_preflight_cpu_load_percent: float = Field(default=5.0, ge=0.0, le=100.0)
     allow_gpu_graphics_processes: bool = False
@@ -189,15 +186,12 @@ class TelemetryConfig(StrictModel):
     capture_cpu_frequency: bool = True
     capture_cpu_temperature: bool = True
     capture_gpu_state: bool = True
-    # Snapshots are taken outside measured TIMING/ENERGY windows to avoid perturbing them.
     capture_pre_post_timing: bool = True
     capture_pre_post_energy: bool = True
 
 
 class SystemBaselineConfig(StrictModel):
     capture_memory_inventory: bool = True
-    # Optional external STREAM executable. Leave null when STREAM is not installed.
-    # Standard Copy/Scale/Add/Triad lines are parsed into structured MB/s fields.
     stream_executable: str | None = None
     stream_args: list[str] = Field(default_factory=list)
     stream_timeout_s: float = Field(default=120.0, gt=1.0, le=1800.0)
@@ -209,8 +203,6 @@ class BuildConfig(StrictModel):
     native_cpu_tuning: bool = True
     enable_cuda: Literal["auto", "on", "off"] = "auto"
     jobs: int | None = Field(default=None, ge=1)
-    # Optional reproducible toolchain overrides. When CUDA is enabled the builder
-    # deliberately uses one compiler for C++ and for NVCC host compilation.
     cxx_compiler: str | None = None
     cuda_host_compiler: str | None = None
 
@@ -233,7 +225,6 @@ class ExperimentGroup(StrictModel):
 
 
 class RootConfig(StrictModel):
-
     output_dir: Path = Path("results")
     dataset_cache_dir: Path = Path(".prbench/datasets")
     build: BuildConfig = Field(default_factory=BuildConfig)
@@ -259,6 +250,7 @@ class AlgorithmDefinition(StrictModel):
     cpu_backend: str | None = None
     gpu_backend: str | None = None
     transfer_policy: str | None = None
+    storage_policy: Literal["host_resident", "file_stream", "gds"] = "host_resident"
     requires_cuda: bool = False
     uses_cpu: bool
     uses_gpu: bool
@@ -274,8 +266,6 @@ class TopologyCpu(StrictModel):
     core_id: int
     numa_node: int | None
     online: bool = True
-    # Heterogeneous core classification. `unknown` is deliberate: the framework
-    # never silently guesses P/E classes for a final research run.
     core_class: Literal["performance", "efficiency", "homogeneous", "unknown"] = "unknown"
     core_class_source: str = "unavailable"
 
