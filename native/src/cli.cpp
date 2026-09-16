@@ -52,6 +52,7 @@ WorkerConfig parse_cli(int argc, char** argv) {
         else if (arg == "--transfer-policy") cfg.transfer_policy = parse_transfer_policy(require_value(i, argc, argv, arg));
         else if (arg == "--memory-path") cfg.memory_path = require_value(i, argc, argv, arg);
         else if (arg == "--storage-policy") cfg.storage_policy = require_value(i, argc, argv, arg);
+        else if (arg == "--gpu-staging-numa") cfg.gpu_staging_numa = require_value(i, argc, argv, arg);
         else if (arg == "--gpus") cfg.gpu_ids = parse_int_list(require_value(i, argc, argv, arg));
         else if (arg == "--gpu-numa-nodes") cfg.gpu_numa_nodes = parse_int_list(require_value(i, argc, argv, arg));
         else if (arg == "--cpu-affinity") cfg.cpu_affinity = parse_int_list(require_value(i, argc, argv, arg));
@@ -79,7 +80,6 @@ WorkerConfig parse_cli(int argc, char** argv) {
     }
 
     if (cfg.build_info) return cfg;
-
     if (cfg.probe_cpu_types) {
         if (cfg.probe_cpus.empty()) throw std::invalid_argument("--probe-cpus is required with --probe-cpu-types");
         return cfg;
@@ -114,6 +114,9 @@ WorkerConfig parse_cli(int argc, char** argv) {
     if (cfg.cpu_fraction >= 1.0) throw std::invalid_argument("--cpu-fraction must be smaller than 1");
     if (cfg.storage_policy != "host_resident" && cfg.storage_policy != "file_stream" && cfg.storage_policy != "gds") {
         throw std::invalid_argument("--storage-policy must be host_resident, file_stream or gds");
+    }
+    if (cfg.gpu_staging_numa != "auto" && cfg.gpu_staging_numa != "off" && cfg.gpu_staging_numa != "strict") {
+        throw std::invalid_argument("--gpu-staging-numa must be auto, off or strict");
     }
     if (!cfg.gpu_numa_nodes.empty() && cfg.gpu_numa_nodes.size() != cfg.gpu_ids.size()) {
         throw std::invalid_argument("--gpu-numa-nodes must match --gpus length");
