@@ -30,6 +30,7 @@ class TaskSpec:
     gpu_control_bindings: list[dict[str, Any]]
     gpu_control_mode: str
     memory_policy: str
+    gpu_staging_numa: str
 
 
 class SweepPlanner:
@@ -99,6 +100,7 @@ class SweepPlanner:
                                 "gpu_worker_cpus": gpu_worker_cpus,
                                 "gpu_control_mode": group.hardware.gpu_control_mode.value,
                                 "memory_policy": group.hardware.memory_policy,
+                                "gpu_staging_numa": group.hardware.gpu_staging_numa,
                             }
                             tasks.append(
                                 TaskSpec(
@@ -119,6 +121,7 @@ class SweepPlanner:
                                     gpu_control_bindings=gpu_control_bindings,
                                     gpu_control_mode=group.hardware.gpu_control_mode.value,
                                     memory_policy=group.hardware.memory_policy,
+                                    gpu_staging_numa=group.hardware.gpu_staging_numa,
                                 )
                             )
         return tasks
@@ -196,9 +199,6 @@ class SweepPlanner:
                 continue
 
             invalid_reasons.add(reason)
-            # A scalar configuration represents one explicit request and should fail
-            # fast.  For a Cartesian sweep, however, an invalid pair is simply not
-            # part of the legal parameter domain (e.g. streams=8, chunks=4).
             if not is_sweep:
                 raise ValueError(reason)
 
@@ -213,14 +213,6 @@ class SweepPlanner:
         gpu_ids: list[int],
         mode: str,
     ) -> tuple[list[int], list[int], list[dict[str, Any]]]:
-        """Assign exactly one distinct physical control core to each GPU.
-
-        Local PCI/NUMA CPUs are preferred.  A physical core is never used as the control
-        core for two GPUs, even when SMT exposes multiple logical CPUs.  In `dedicated`
-        mode every logical CPU belonging to the selected control core is removed from the
-        CPU compute pool.  In `shared` mode the core remains in the compute pool and the
-        control thread intentionally contends with CPU reduction work.
-        """
         if not gpu_ids:
             return list(cpu_pool), [], []
         if mode not in {"dedicated", "shared"}:
@@ -243,9 +235,6 @@ class SweepPlanner:
             if gpu is None:
                 raise ValueError(f"GPU {gpu_id} is unavailable")
 
-            # Candidate tiers encode a deterministic topology-aware preference order.
-            # The selected CPU class is respected first, so an E-core-only experiment does
-            # not silently use a P-core as its GPU control resource (or vice versa).
             local = [c for c in gpu.local_cpus if c in allowed]
             numa_local = [
                 c.cpu_id
@@ -284,21 +273,18 @@ class SweepPlanner:
             used_control_cores.add(key)
             workers.append(chosen)
             cpu = cpu_by_id[chosen]
-            bindings.append(
-                {
-                    "gpu_id": gpu_id,
-                    "cpu_id": chosen,
-                    "socket_id": cpu.socket_id,
-                    "core_id": cpu.core_id,
-                    "numa_node": cpu.numa_node,
-                    "gpu_numa_node": gpu.numa_node,
-                    "locality": locality,
-                    "mode": mode,
-                }
-            )
+            bindings.append({
+                "gpu_id": gpu_id,
+                "cpu_id": chosen,
+                "socket_id": cpu.socket_id,
+                "core_id": cpu.core_id,
+                "numa_node": cpu.numa_node,
+                "gpu_numa_node": gpu.numa_node,
+                "locality": locality,
+                "mode": mode,
+            })
 
             if mode == "dedicated":
-                # Remove the complete physical core, not only one SMT sibling.
                 remaining = [c for c in remaining if core_key(c) != key]
 
         return remaining, workers, bindings
