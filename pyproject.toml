@@ -28,6 +28,7 @@ dev = [
 [project.scripts]
 prbench = "prbench.cli:main"
 prbench-memory-paths = "prbench.memory_paths:main"
+prbench-gds = "prbench.gds_study:main"
 
 [tool.setuptools.packages.find]
 include = ["prbench*"]
