@@ -3,6 +3,7 @@ project(parallel_reduction_benchmark_v3_0 LANGUAGES CXX)
 
 option(PRBENCH_ENABLE_CUDA "Build NVIDIA CUDA backends" ON)
 option(PRBENCH_NATIVE_CPU_TUNING "Enable -march=native on GCC/Clang" ON)
+option(PRBENCH_ENABLE_GDS "Build optional GPUDirect Storage worker when cuFile is available" ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -62,7 +63,7 @@ if(PRBENCH_HAS_CUDA)
     target_compile_definitions(prbench-worker PRIVATE PRBENCH_HAS_CUDA=1)
     target_compile_options(prbench-worker PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-O3;-lineinfo>)
 
-    # Experimental worker used by the GPU break-even branch.  It deliberately keeps
+    # Experimental worker used by the GPU break-even branch. It deliberately keeps
     # reduction backend fixed at CUB while changing only the data-access/memory policy.
     add_executable(prbench-memory-path-worker native/src/memory_path_worker.cu)
     set_target_properties(prbench-memory-path-worker PROPERTIES
@@ -71,6 +72,33 @@ if(PRBENCH_HAS_CUDA)
     )
     target_link_libraries(prbench-memory-path-worker PRIVATE CUDA::cudart)
     target_compile_options(prbench-memory-path-worker PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-O3;-lineinfo>)
+
+    if(PRBENCH_ENABLE_GDS)
+        find_path(PRBENCH_CUFILE_INCLUDE_DIR cufile.h
+            HINTS
+                ${CUDAToolkit_INCLUDE_DIRS}
+                /usr/local/cuda/include
+        )
+        find_library(PRBENCH_CUFILE_LIBRARY cufile
+            HINTS
+                ${CUDAToolkit_LIBRARY_DIR}
+                /usr/local/cuda/lib64
+                /usr/local/cuda/targets/x86_64-linux/lib
+        )
+        if(PRBENCH_CUFILE_INCLUDE_DIR AND PRBENCH_CUFILE_LIBRARY)
+            add_executable(prbench-gds-worker native/src/gds_worker.cu)
+            target_include_directories(prbench-gds-worker PRIVATE ${PRBENCH_CUFILE_INCLUDE_DIR})
+            set_target_properties(prbench-gds-worker PROPERTIES
+                CUDA_STANDARD 17
+                CUDA_STANDARD_REQUIRED ON
+            )
+            target_link_libraries(prbench-gds-worker PRIVATE CUDA::cudart ${PRBENCH_CUFILE_LIBRARY})
+            target_compile_options(prbench-gds-worker PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-O3;-lineinfo>)
+            message(STATUS "GPUDirect Storage worker enabled")
+        else()
+            message(STATUS "GPUDirect Storage/cuFile not found; prbench-gds-worker will not be built")
+        endif()
+    endif()
 else()
     target_compile_definitions(prbench-worker PRIVATE PRBENCH_HAS_CUDA=0)
 endif()
