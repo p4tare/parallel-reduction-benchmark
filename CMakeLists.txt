@@ -53,6 +53,13 @@ if(PRBENCH_ENABLE_CUDA)
             native/src/gpu_backend.cu
             native/src/integrated_strategy.cu
         )
+        # integrated_strategy.cu intentionally keeps a small capability helper that is
+        # not referenced on every CUDA/toolkit combination. Suppress NVCC diagnostic
+        # 177 for this source only; all other CUDA warnings remain enabled.
+        set_source_files_properties(
+            native/src/integrated_strategy.cu
+            PROPERTIES COMPILE_OPTIONS "--diag-suppress=177"
+        )
         set(PRBENCH_HAS_CUDA TRUE)
     else()
         message(WARNING "CUDA requested but no CUDA compiler was found; building CPU-only worker")
