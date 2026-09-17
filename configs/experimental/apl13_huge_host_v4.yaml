@@ -1,0 +1,178 @@
+# APL13 V4 HUGE HOST-RESIDENT CAMPAIGN
+# Exploratory large-data study before thesis-final parameter locking.
+# Uses the unified prbench runner/worker, shared validation, energy and telemetry.
+# Dataset sizes: 32 GiB, 64 GiB and 128 GiB (float32).
+
+output_dir: results/apl13_huge_host_v4
+dataset_cache_dir: .prbench/datasets
+
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: "on"
+  jobs: null
+  cxx_compiler: /usr/bin/g++-13
+  cuda_host_compiler: /usr/bin/g++-13
+
+measurement:
+  warmup_runs: 1
+  scheduler_calibration_repetitions: 3
+  scheduler_calibration_bursts: 1
+  timing_repetitions: 3
+  timing_probe_repetitions: 3
+  timing_target_batch_seconds: 0.50
+  timing_min_repetitions: 3
+  timing_max_repetitions: 10
+  cache_rotation_target_bytes: 268435456
+  cache_rotation_max_replicas: 1
+  energy_batch_repetitions: 1
+  energy_target_batch_seconds: 3.0
+  energy_min_repetitions: 1
+  energy_max_repetitions: 10
+  blocks: 3
+  randomization_seed: 20260924
+  max_dataset_ram_fraction: 0.70
+  max_dataset_storage_fraction_of_free: 0.90
+  gpu_memory_safety_fraction: 0.80
+  thermal_safety_gpu_c: 85
+  thermal_safety_cpu_c: 95
+  thermal_wait_timeout_s: 300
+  worker_event_timeout_s: 21600
+  strict_preflight: false
+  max_preflight_cpu_load_percent: 15.0
+  allow_gpu_graphics_processes: false
+
+energy:
+  enable_cpu: true
+  enable_gpu: true
+  gpu_power_fallback_poll_ms: 50
+
+telemetry:
+  enabled: true
+  capture_cpu_frequency: true
+  capture_cpu_temperature: true
+  capture_gpu_state: true
+  capture_pre_post_timing: true
+  capture_pre_post_energy: true
+
+system_baselines:
+  capture_memory_inventory: true
+  stream_executable: null
+  stream_args: []
+  stream_timeout_s: 120
+
+experiments:
+  # Strong CPU reference at every large host-resident size.
+  - id: huge_cpu_baseline
+    operations: [sum]
+    datasets:
+      - &d32 {size: 8589934592, dtype: float32, distribution: uniform, seed: 53001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - &d64 {size: 17179869184, dtype: float32, distribution: uniform, seed: 53001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - &d128 {size: 34359738368, dtype: float32, distribution: uniform, seed: 53001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+    algorithms:
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  # 32 GiB fits comfortably inside one 48 GiB RTX 8000, so this group can compare
+  # whole-input explicit/device-resident paths with bounded and host/managed paths.
+  - id: huge_single_gpu_32gib
+    operations: [sum]
+    datasets: [*d32]
+    algorithms:
+      - {id: gpu_cub}
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864}}
+      - {id: gpu_cub_chunked, params: {chunk_size: 67108864, reuse_count: 1}}
+      - {id: gpu_cub_pinned_direct, params: {chunk_size: 67108864, reuse_count: 1}}
+      - {id: gpu_cub_zero_copy, params: {reuse_count: 1}}
+      - {id: gpu_cub_managed_fault, params: {reuse_count: 1}}
+      - {id: gpu_cub_managed_prefetch, params: {reuse_count: 1}}
+      - {id: gpu_cub_managed_advised, params: {reuse_count: 1}}
+      - {id: gpu_cub_hmm, params: {reuse_count: 1}}
+      - {id: gpu_cub_device_resident, params: {reuse_count: 1}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  # Same-machine 1->2 GPU topology study. 64 GiB gives ~32 GiB per GPU for the
+  # non-pipelined equal/profiled multi-GPU baselines and remains below safe VRAM budget.
+  - id: huge_two_gpu_64gib
+    operations: [sum]
+    datasets: [*d64]
+    algorithms:
+      - {id: gpu_multi_cub_equal}
+      - {id: gpu_multi_cub_profiled}
+      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864}}
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_equal_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864}}
+      - {id: hybrid_static_profiled}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [[0, 1]]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  # 128 GiB deliberately exceeds a single GPU's VRAM. Only bounded/managed paths are
+  # included here; full explicit/device-resident paths are intentionally excluded.
+  - id: huge_bounded_128gib_each_gpu
+    operations: [sum]
+    datasets: [*d128]
+    algorithms:
+      - {id: gpu_cub_chunked, params: {chunk_size: 67108864, reuse_count: 1}}
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864}}
+      - {id: gpu_cub_managed_fault, params: {reuse_count: 1}}
+      - {id: gpu_cub_managed_prefetch, params: {reuse_count: 1}}
+      - {id: gpu_cub_managed_advised, params: {reuse_count: 1}}
+      - {id: gpu_cub_hmm, params: {reuse_count: 1}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: huge_bounded_128gib_two_gpu
+    operations: [sum]
+    datasets: [*d128]
+    algorithms:
+      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864}}
+      - {id: hybrid_static_equal_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [[0, 1]]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  # Reuse/amortization at the largest size that still fits one GPU explicitly.
+  - id: huge_reuse_32gib
+    operations: [sum]
+    datasets: [*d32]
+    algorithms:
+      - {id: gpu_cub, params: {reuse_count: [1, 4, 16]}}
+      - {id: gpu_cub_device_resident, params: {reuse_count: [1, 4, 16], use_cuda_graphs: true}}
+      - {id: gpu_cub_managed_prefetch, params: {reuse_count: [1, 4, 16]}}
+      - {id: gpu_cub_zero_copy, params: {reuse_count: [1, 4, 16]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [each]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
