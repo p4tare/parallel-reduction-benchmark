@@ -537,6 +537,25 @@ experiments:
       memory_policy: interleave
       gpu_staging_numa: auto
 
+  - id: final_v4_universal_reuse_hybrid_one_gpu
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: hybrid_static_equal, params: {reuse_count: [1, 20, 21]}}
+      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: 1048576, reuse_count: [1, 20, 21]}}
+      - {id: hybrid_static_profiled, params: {reuse_count: [1, 20, 21]}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: 1048576, reuse_count: [1, 20, 21]}}
+      - {id: hybrid_dynamic_fixed, params: {chunk_size: 1048576, reuse_count: [1, 20, 21]}}
+      - {id: hybrid_dynamic_guided, params: {min_chunk_size: 262144, guided_factor: 8.0, reuse_count: [1, 20, 21]}}
+      - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 262144, max_chunk_size: 16777216, target_chunk_ms: 1.0, ema_alpha: 0.25, reuse_count: [1, 20, 21]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
   - id: final_v4_universal_reuse_hybrid
     operations: [sum]
     datasets: [*f32_1e8]
@@ -597,6 +616,52 @@ experiments:
       gpu_sets: [[0, 1]]
       gpu_control_mode: dedicated
       memory_policy: default
+      gpu_staging_numa: auto
+
+  # ---------------------------------------------------------------------------
+  # D. ASYNC PARAMETER BRIDGES
+  #    The core/medium regime uses 1 Mi-element chunks (and 2 hybrid streams),
+  #    whereas the large regime uses 64 Mi-element chunks (and 4 hybrid streams).
+  #    These controls run the large-regime tuning at N=1e8 so that cross-size
+  #    trends can be separated from the tuning change itself.
+  # ---------------------------------------------------------------------------
+  - id: final_v4_async_parameter_bridge_single_gpu
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864, reuse_count: 1}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: final_v4_async_parameter_bridge_multi_gpu
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864, reuse_count: 1}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [[0, 1]]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: final_v4_async_parameter_bridge_hybrid
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864, reuse_count: 1}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [[0, 1]]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
       gpu_staging_numa: auto
 
   - id: final_v4_hmm_capability_probe
