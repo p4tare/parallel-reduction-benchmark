@@ -670,7 +670,9 @@ private:
             h2d.record_stop(stream);
 
             kernel.record_start(stream);
-            CUDA_CHECK(cub_reduce<T, Op>(d_temp_[slot], d_temp_bytes_[slot], d_input, d_output, n, stream));
+            for (int reuse = 0; reuse < cfg_.reuse_count; ++reuse) {
+                CUDA_CHECK(cub_reduce<T, Op>(d_temp_[slot], d_temp_bytes_[slot], d_input, d_output, n, stream));
+            }
             kernel.record_stop(stream);
 
             d2h.record_start(stream);
@@ -688,8 +690,8 @@ private:
             metrics.kernel_us += pipeline_events_[c * 3 + 1]->elapsed_us();
             metrics.d2h_us += pipeline_events_[c * 3 + 2]->elapsed_us();
         }
-        metrics.chunks = static_cast<std::size_t>(used_chunks);
-        metrics.elements = count;
+        metrics.chunks = static_cast<std::size_t>(used_chunks) * static_cast<std::size_t>(cfg_.reuse_count);
+        metrics.elements = count * static_cast<std::size_t>(cfg_.reuse_count);
         metrics.total_us = std::chrono::duration<double, std::micro>(host_end - host_start).count();
         return PartialResult{make_value(result), metrics};
     }
