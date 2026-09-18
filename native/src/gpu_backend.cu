@@ -473,66 +473,79 @@ private:
         const auto stream = streams_[0];
         DeviceMetrics metrics;
         metrics.device_id = cfg_.device_id;
-        metrics.chunks = 1;
-        metrics.elements = count;
+        metrics.chunks = static_cast<std::size_t>(cfg_.reuse_count);
+        metrics.elements = count * static_cast<std::size_t>(cfg_.reuse_count);
 
-        EventPair overhead;
         EventPair h2d;
-        EventPair kernel;
         EventPair d2h;
+        std::vector<std::unique_ptr<EventPair>> overhead_events;
+        std::vector<std::unique_ptr<EventPair>> kernel_events;
+        overhead_events.reserve(static_cast<std::size_t>(cfg_.reuse_count));
+        kernel_events.reserve(static_cast<std::size_t>(cfg_.reuse_count));
         const auto host_start = host_clock::now();
-
-        if (cfg_.backend == GpuBackendKind::GlobalAtomic ||
-            cfg_.backend == GpuBackendKind::SharedNaive ||
-            cfg_.backend == GpuBackendKind::WarpAtomic) {
-            overhead.record_start(stream);
-            if constexpr (Op == ReductionOperation::Sum) {
-                CUDA_CHECK(cudaMemsetAsync(d_output, 0, sizeof(T), stream));
-            } else {
-                *h_output = reduction_identity<T, Op>();
-                CUDA_CHECK(cudaMemcpyAsync(d_output, h_output, sizeof(T), cudaMemcpyHostToDevice, stream));
-            }
-            overhead.record_stop(stream);
-        }
 
         h2d.record_start(stream);
         CUDA_CHECK(cudaMemcpyAsync(d_input, host_data, count * sizeof(T), cudaMemcpyHostToDevice, stream));
         h2d.record_stop(stream);
 
-        kernel.record_start(stream);
+        T* final_output = d_output;
         const std::size_t blocks = max_grid(count);
-        if (cfg_.backend == GpuBackendKind::GlobalAtomic) {
-            global_atomic_kernel<T, Op><<<static_cast<unsigned>(blocks), cfg_.block_size, 0, stream>>>(d_input, d_output, count);
-        } else if (cfg_.backend == GpuBackendKind::SharedNaive) {
-            shared_naive_kernel<T, Op><<<static_cast<unsigned>(blocks), cfg_.block_size, cfg_.block_size * sizeof(T), stream>>>(
-                d_input, d_output, count
-            );
-        } else if (cfg_.backend == GpuBackendKind::WarpAtomic) {
-            warp_atomic_kernel<T, Op><<<static_cast<unsigned>(blocks), cfg_.block_size, 0, stream>>>(d_input, d_output, count);
-        } else if (cfg_.backend == GpuBackendKind::TwoPass) {
-            d_output = two_pass<T, Op>(d_input, count, stream, 0);
-        } else if (cfg_.backend == GpuBackendKind::Cub) {
-            CUDA_CHECK(cub_reduce<T, Op>(d_temp_[0], d_temp_bytes_[0], d_input, d_output, count, stream));
-        } else {
-            throw std::invalid_argument("invalid GPU backend");
+        for (int reuse = 0; reuse < cfg_.reuse_count; ++reuse) {
+            if (cfg_.backend == GpuBackendKind::GlobalAtomic ||
+                cfg_.backend == GpuBackendKind::SharedNaive ||
+                cfg_.backend == GpuBackendKind::WarpAtomic) {
+                auto overhead = std::make_unique<EventPair>();
+                overhead->record_start(stream);
+                if constexpr (Op == ReductionOperation::Sum) {
+                    CUDA_CHECK(cudaMemsetAsync(d_output, 0, sizeof(T), stream));
+                } else {
+                    *h_output = reduction_identity<T, Op>();
+                    CUDA_CHECK(cudaMemcpyAsync(d_output, h_output, sizeof(T), cudaMemcpyHostToDevice, stream));
+                }
+                overhead->record_stop(stream);
+                overhead_events.push_back(std::move(overhead));
+            }
+
+            auto kernel = std::make_unique<EventPair>();
+            kernel->record_start(stream);
+            if (cfg_.backend == GpuBackendKind::GlobalAtomic) {
+                global_atomic_kernel<T, Op><<<static_cast<unsigned>(blocks), cfg_.block_size, 0, stream>>>(
+                    d_input, d_output, count
+                );
+                final_output = d_output;
+            } else if (cfg_.backend == GpuBackendKind::SharedNaive) {
+                shared_naive_kernel<T, Op><<<static_cast<unsigned>(blocks), cfg_.block_size, cfg_.block_size * sizeof(T), stream>>>(
+                    d_input, d_output, count
+                );
+                final_output = d_output;
+            } else if (cfg_.backend == GpuBackendKind::WarpAtomic) {
+                warp_atomic_kernel<T, Op><<<static_cast<unsigned>(blocks), cfg_.block_size, 0, stream>>>(
+                    d_input, d_output, count
+                );
+                final_output = d_output;
+            } else if (cfg_.backend == GpuBackendKind::TwoPass) {
+                final_output = two_pass<T, Op>(d_input, count, stream, 0);
+            } else if (cfg_.backend == GpuBackendKind::Cub) {
+                CUDA_CHECK(cub_reduce<T, Op>(d_temp_[0], d_temp_bytes_[0], d_input, d_output, count, stream));
+                final_output = d_output;
+            } else {
+                throw std::invalid_argument("invalid GPU backend");
+            }
+            CUDA_CHECK(cudaGetLastError());
+            kernel->record_stop(stream);
+            kernel_events.push_back(std::move(kernel));
         }
-        CUDA_CHECK(cudaGetLastError());
-        kernel.record_stop(stream);
 
         d2h.record_start(stream);
-        CUDA_CHECK(cudaMemcpyAsync(h_output, d_output, sizeof(T), cudaMemcpyDeviceToHost, stream));
+        CUDA_CHECK(cudaMemcpyAsync(h_output, final_output, sizeof(T), cudaMemcpyDeviceToHost, stream));
         d2h.record_stop(stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
         const auto host_end = host_clock::now();
 
         metrics.h2d_us = h2d.elapsed_us();
-        metrics.kernel_us = kernel.elapsed_us();
         metrics.d2h_us = d2h.elapsed_us();
-        metrics.device_overhead_us =
-            (cfg_.backend == GpuBackendKind::GlobalAtomic || cfg_.backend == GpuBackendKind::SharedNaive ||
-             cfg_.backend == GpuBackendKind::WarpAtomic)
-                ? overhead.elapsed_us()
-                : 0.0;
+        for (const auto& event : overhead_events) metrics.device_overhead_us += event->elapsed_us();
+        for (const auto& event : kernel_events) metrics.kernel_us += event->elapsed_us();
         metrics.total_us = std::chrono::duration<double, std::micro>(host_end - host_start).count();
         return PartialResult{make_value(*h_output), metrics};
     }
