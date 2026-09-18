@@ -1,6 +1,6 @@
 # APL13 FINAL V4 COMPREHENSIVE CAMPAIGN
 # Confirmatory thesis campaign combining legacy algorithms with the integrated v4 memory,
-# topology and storage paths. Runtime target: approximately 15-18 h on apl13 when the node
+# topology and storage paths. Runtime target: approximately 15-20 h on apl13 when the node
 # is otherwise idle. The design deliberately avoids a full Cartesian product at N=1e9:
 # every algorithm is covered across all operations and dtypes at core sizes, while only
 # practically relevant/scalable methods are repeated at the largest host-resident size.
@@ -457,7 +457,7 @@ experiments:
   # C. UNIVERSAL REUSE CHECK: the same reuse semantics are exercised across every
   #    executable host-resident algorithm family on a representative 100M float32 SUM.
   #    K=[1,10,19,20,21,22,30] captures both the broad amortization trend and the
-#    dense break-even region around 20/21. global_atomic uses a reduced range.
+  #    dense break-even region around 20/21. global_atomic uses a reduced range.
   #    This is separate from timing_repetitions (statistical samples).
   # ---------------------------------------------------------------------------
   - id: final_v4_universal_reuse_cpu_seq_simd
@@ -579,7 +579,7 @@ experiments:
 
   # File-stream reuse deliberately rereads the source because the dataset is not resident.
   # The full K sweep therefore measures whether repeated file-backed reductions show
-# any amortization despite rereading the source rather than retaining it in VRAM.
+  # any amortization despite rereading the source rather than retaining it in VRAM.
   - id: final_v4_universal_reuse_file_stream_cpu
     operations: [sum]
     datasets: [*f32_1e8]
@@ -684,7 +684,7 @@ experiments:
     operations: [sum, min, max]
     datasets: *capability_datasets
     algorithms:
-      - {id: gpu_cub_gds, params: {chunk_size: 16777216, reuse_count: [1, 21]}}}
+      - {id: gpu_cub_gds, params: {chunk_size: 16777216, reuse_count: [1, 21]}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
