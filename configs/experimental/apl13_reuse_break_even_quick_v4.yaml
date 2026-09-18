@@ -1,0 +1,133 @@
+# APL13 V4 QUICK REUSE BREAK-EVEN STUDY
+# Short confirmatory campaign (~20 min target on apl13 based on the 32 GiB measurements).
+# Purpose: densely measure the CPU<->GPU reuse break-even with many repetitions,
+# while keeping the dataset modest (4 GiB float32) and using only GPU 0.
+#
+# Interpretation:
+# - cpu_omp_simd: strong one-reduction CPU reference.
+# - gpu_cub: one explicit H2D upload per iteration, followed by K reductions.
+# - gpu_cub_device_resident: diagnostic upper bound; initial upload is outside timed e2e.
+# - gpu_cub_zero_copy: control showing that mapped host RAM is reread over PCIe for each reuse.
+#
+# Each condition gets 20 timing repetitions in each of 3 randomized blocks = 60 samples.
+# For reuse_count=K, each timing sample contains K logical reductions and results are also
+# reported per logical reduction by the unified runner.
+
+output_dir: results/apl13_reuse_break_even_quick_v4
+dataset_cache_dir: .prbench/datasets
+
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: "on"
+  jobs: null
+  cxx_compiler: /usr/bin/g++-13
+  cuda_host_compiler: /usr/bin/g++-13
+
+measurement:
+  warmup_runs: 1
+  scheduler_calibration_repetitions: 3
+  scheduler_calibration_bursts: 1
+  timing_repetitions: 20
+  timing_probe_repetitions: 3
+  timing_target_batch_seconds: 0.50
+  timing_min_repetitions: 3
+  timing_max_repetitions: 100
+  cache_rotation_target_bytes: 268435456
+  cache_rotation_max_replicas: 1
+  energy_batch_repetitions: auto
+  energy_target_batch_seconds: 3.0
+  energy_min_repetitions: 1
+  energy_max_repetitions: 20
+  blocks: 3
+  randomization_seed: 20260926
+  max_dataset_ram_fraction: 0.70
+  max_dataset_storage_fraction_of_free: 0.90
+  gpu_memory_safety_fraction: 0.80
+  thermal_safety_gpu_c: 85
+  thermal_safety_cpu_c: 95
+  thermal_wait_timeout_s: 300
+  worker_event_timeout_s: 3600
+  strict_preflight: false
+  max_preflight_cpu_load_percent: 15.0
+  allow_gpu_graphics_processes: false
+
+energy:
+  enable_cpu: true
+  enable_gpu: true
+  gpu_power_fallback_poll_ms: 50
+
+telemetry:
+  enabled: true
+  capture_cpu_frequency: true
+  capture_cpu_temperature: true
+  capture_gpu_state: true
+  capture_pre_post_timing: true
+  capture_pre_post_energy: true
+
+system_baselines:
+  capture_memory_inventory: true
+  stream_executable: null
+  stream_args: []
+  stream_timeout_s: 120
+
+experiments:
+  - id: quick_reuse_cpu_reference
+    operations: [sum]
+    datasets:
+      - &d4 {size: 1073741824, dtype: float32, distribution: uniform, seed: 54001, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+    algorithms:
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  # Main experiment. The dense 18-24 region directly tests the predicted crossing
+  # from the 32 GiB campaign; low/high K points verify the linear amortization model.
+  - id: quick_reuse_explicit_gpu0
+    operations: [sum]
+    datasets: [*d4]
+    algorithms:
+      - {id: gpu_cub, params: {reuse_count: [1, 4, 8, 12, 16, 18, 20, 21, 22, 24, 28, 32]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  # Diagnostic compute-only reference. This is NOT a fair one-shot CPU comparison:
+  # the initial dataset upload happens during prepare and is excluded from timed e2e.
+  - id: quick_reuse_device_resident_gpu0
+    operations: [sum]
+    datasets: [*d4]
+    algorithms:
+      - {id: gpu_cub_device_resident, params: {reuse_count: [1, 16, 21, 24, 32], use_cuda_graphs: false}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  # Small control only: K=4 should take ~4x K=1 in total if every reduction rereads
+  # mapped host memory through PCIe, so time per logical reduction should stay similar.
+  - id: quick_reuse_zero_copy_control_gpu0
+    operations: [sum]
+    datasets: [*d4]
+    algorithms:
+      - {id: gpu_cub_zero_copy, params: {reuse_count: [1, 4]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
