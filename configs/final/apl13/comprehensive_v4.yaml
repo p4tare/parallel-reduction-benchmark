@@ -458,16 +458,28 @@ experiments:
   #    K=20/21 directly checks whether the break-even region seen for CUB generalizes.
   #    This is separate from timing_repetitions (statistical samples).
   # ---------------------------------------------------------------------------
-  - id: final_v4_universal_reuse_cpu
+  - id: final_v4_universal_reuse_cpu_seq_simd
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
       - {id: cpu_seq, params: {reuse_count: [1, 20, 21]}}
-      - {id: cpu_omp, params: {reuse_count: [1, 20, 21]}}
       - {id: cpu_omp_simd, params: {reuse_count: [1, 20, 21]}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: final_v4_universal_reuse_cpu_omp
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: cpu_omp, params: {reuse_count: [1, 20, 21]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: all_threads
       gpu_sets: []
       gpu_control_mode: dedicated
       memory_policy: interleave
