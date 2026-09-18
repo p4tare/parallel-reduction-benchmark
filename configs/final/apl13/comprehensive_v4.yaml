@@ -343,6 +343,59 @@ experiments:
       memory_policy: interleave
       gpu_staging_numa: auto
 
+  # ---------------------------------------------------------------------------
+  # B. ABOVE-SINGLE-GPU-VRAM: 64 GiB float32, host-resident.
+  #    This dataset fits comfortably in apl13 RAM but exceeds the 48 GiB VRAM
+  #    of one RTX 8000. Full-device-resident gpu_cub is intentionally excluded;
+  #    only bounded/migrating single-GPU paths and the [0,1] topology are valid.
+  # ---------------------------------------------------------------------------
+  - id: final_v4_above_vram_cpu_reference
+    operations: [sum]
+    datasets: &above_vram_64gib
+      - &f32_64gib {size: 17179869184, dtype: float32, distribution: uniform, seed: 61501, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+    algorithms:
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: final_v4_above_vram_single_gpu_bounded
+    operations: [sum]
+    datasets: *above_vram_64gib
+    algorithms:
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864, reuse_count: 1}}
+      - {id: gpu_cub_chunked, params: {chunk_size: 67108864, reuse_count: 1}}
+      - {id: gpu_cub_zero_copy, params: {reuse_count: 1}}
+      - {id: gpu_cub_managed_fault, params: {reuse_count: 1}}
+      - {id: gpu_cub_managed_prefetch, params: {reuse_count: 1}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: final_v4_above_vram_two_gpu
+    operations: [sum]
+    datasets: *above_vram_64gib
+    algorithms:
+      - {id: gpu_multi_cub_equal}
+      - {id: gpu_multi_cub_profiled}
+      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864, reuse_count: 1}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [[0, 1]]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
   - id: final_v4_reuse_cpu_reference
     operations: [sum, min, max]
     datasets: &reuse_4gib_datasets
