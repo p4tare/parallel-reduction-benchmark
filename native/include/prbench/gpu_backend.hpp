@@ -20,6 +20,7 @@ struct GpuReducerConfig {
     int pipeline_streams{4};
     int pipeline_chunks{16};
     std::size_t pipeline_chunk_elements{0};
+    int reuse_count{1};
 };
 
 class IGpuReducer {
