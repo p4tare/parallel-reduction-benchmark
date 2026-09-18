@@ -119,3 +119,18 @@ experiments:
     )
     cfg = ConfigurationLoader(AlgorithmCatalog()).load(config)
     assert cfg.build.enable_cuda == "off"
+
+
+def test_every_reduction_algorithm_accepts_reuse_count() -> None:
+    catalog = AlgorithmCatalog()
+    missing = [algorithm.id for algorithm in catalog.all() if "reuse_count" not in algorithm.tunables]
+    assert missing == []
+
+
+def test_final_apl13_configs_validate() -> None:
+    root = Path(__file__).resolve().parents[1]
+    catalog = AlgorithmCatalog()
+    comprehensive = ConfigurationLoader(catalog).load(root / "configs" / "final" / "apl13" / "comprehensive_v4.yaml")
+    out_of_core = ConfigurationLoader(catalog).load(root / "configs" / "final" / "apl13" / "out_of_core_v4.yaml")
+    assert comprehensive.measurement.blocks == 3
+    assert out_of_core.measurement.blocks == 3
