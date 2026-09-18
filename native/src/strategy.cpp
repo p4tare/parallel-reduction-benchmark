@@ -60,6 +60,24 @@ double median(std::vector<double> values) {
     return 0.5 * (values[mid - 1] + values[mid]);
 }
 
+CpuReductionResult reduce_cpu_reused(
+    const void* data,
+    std::size_t count,
+    DataType dtype,
+    CpuBackendKind backend,
+    int threads,
+    ReductionOperation operation,
+    int reuse_count
+) {
+    CpuReductionResult out{Value::identity(dtype, operation), 0.0};
+    for (int reuse = 0; reuse < reuse_count; ++reuse) {
+        auto current = reduce_cpu(data, count, dtype, backend, threads, operation);
+        out.result = current.result;
+        out.compute_us += current.compute_us;
+    }
+    return out;
+}
+
 std::size_t calibration_offset(
     std::size_t total,
     std::size_t sample_n,
@@ -206,13 +224,16 @@ public:
     IterationMetrics run_once() override {
         dataset_.advance_replica();
         const auto begin = clock_type::now();
-        auto cpu = reduce_cpu(dataset_.data(), dataset_.count(), dataset_.dtype(), cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation);
+        auto cpu = reduce_cpu_reused(
+            dataset_.data(), dataset_.count(), dataset_.dtype(), cfg_.cpu_backend,
+            cfg_.cpu_threads, cfg_.operation, cfg_.reuse_count
+        );
         const auto end = clock_type::now();
         IterationMetrics out;
         out.result = cpu.result;
         out.cpu.compute_us = cpu.compute_us;
-        out.cpu.chunks = 1;
-        out.cpu.elements = dataset_.count();
+        out.cpu.chunks = static_cast<std::size_t>(cfg_.reuse_count);
+        out.cpu.elements = dataset_.count() * static_cast<std::size_t>(cfg_.reuse_count);
         out.e2e_us = std::chrono::duration<double, std::micro>(end - begin).count();
         return out;
     }
@@ -234,6 +255,7 @@ public:
         gc.operation = cfg_.operation;
         gc.max_elements = dataset_.count();
         gc.block_size = cfg_.block_size;
+        gc.reuse_count = cfg_.reuse_count;
         gc.pipeline_streams = cfg_.pipeline_streams;
         gc.pipeline_chunks = cfg_.pipeline_chunks;
         gc.pipeline_chunk_elements = cfg_.pipeline_chunk_elements;
@@ -368,6 +390,7 @@ private:
             gc.operation = cfg_.operation;
             gc.max_elements = max_sample;
             gc.block_size = cfg_.block_size;
+            gc.reuse_count = cfg_.reuse_count;
             gc.pipeline_streams = cfg_.pipeline_streams;
             gc.pipeline_chunks = cfg_.pipeline_chunks;
         gc.pipeline_chunk_elements = cfg_.pipeline_chunk_elements;
@@ -415,6 +438,7 @@ private:
             gc.operation = cfg_.operation;
             gc.max_elements = std::max<std::size_t>(1, ranges_[i].count);
             gc.block_size = cfg_.block_size;
+            gc.reuse_count = cfg_.reuse_count;
             gc.pipeline_streams = cfg_.pipeline_streams;
             gc.pipeline_chunks = cfg_.pipeline_chunks;
         gc.pipeline_chunk_elements = cfg_.pipeline_chunk_elements;
@@ -471,9 +495,9 @@ public:
         const auto& cpu_range = ranges_.front();
         CpuReductionResult cpu{Value::identity(dataset_.dtype(), cfg_.operation), 0.0};
         if (cpu_range.count > 0) {
-            cpu = reduce_cpu(
+            cpu = reduce_cpu_reused(
                 dataset_.offset_ptr(cpu_range.offset), cpu_range.count, dataset_.dtype(),
-                cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation
+                cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation, cfg_.reuse_count
             );
         }
         for (auto& thread : threads) thread.join();
@@ -488,8 +512,8 @@ public:
         IterationMetrics out;
         out.result = result;
         out.cpu.compute_us = cpu.compute_us;
-        out.cpu.chunks = cpu_range.count ? 1 : 0;
-        out.cpu.elements = cpu_range.count;
+        out.cpu.chunks = cpu_range.count ? static_cast<std::size_t>(cfg_.reuse_count) : 0;
+        out.cpu.elements = cpu_range.count * static_cast<std::size_t>(cfg_.reuse_count);
         for (const auto& partial : gpu_results) out.gpus.push_back(partial.device);
         out.merge_us = std::chrono::duration<double, std::micro>(merge_end - merge_start).count();
         out.e2e_us = std::chrono::duration<double, std::micro>(e2e_end - e2e_start).count();
@@ -509,16 +533,18 @@ private:
         std::vector<std::pair<std::size_t, double>> cpu_samples;
         for (auto n : sizes) {
             dataset_.advance_replica();
-            (void)reduce_cpu(dataset_.offset_ptr(calibration_offset(dataset_.count(), n, 0)), n,
-                             dataset_.dtype(), cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation);
+            (void)reduce_cpu_reused(dataset_.offset_ptr(calibration_offset(dataset_.count(), n, 0)), n,
+                                    dataset_.dtype(), cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation,
+                                    cfg_.reuse_count);
             const double elapsed = robust_calibration_median(
                 cfg_.calibration_bursts,
                 cfg_.calibration_repetitions,
                 [&](std::size_t sample_index) {
                     dataset_.advance_replica();
                     const auto offset = calibration_offset(dataset_.count(), n, sample_index + 1);
-                    return reduce_cpu(dataset_.offset_ptr(offset), n, dataset_.dtype(),
-                                      cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation).compute_us;
+                    return reduce_cpu_reused(dataset_.offset_ptr(offset), n, dataset_.dtype(),
+                                             cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation,
+                                             cfg_.reuse_count).compute_us;
                 }
             );
             cpu_samples.emplace_back(n, elapsed);
@@ -545,6 +571,7 @@ private:
             gc.operation = cfg_.operation;
             gc.max_elements = max_sample;
             gc.block_size = cfg_.block_size;
+            gc.reuse_count = cfg_.reuse_count;
             gc.pipeline_streams = cfg_.pipeline_streams;
             gc.pipeline_chunks = cfg_.pipeline_chunks;
         gc.pipeline_chunk_elements = cfg_.pipeline_chunk_elements;
@@ -592,6 +619,7 @@ private:
             gc.operation = cfg_.operation;
             gc.max_elements = std::max<std::size_t>(1, ranges_[i + 1].count);
             gc.block_size = cfg_.block_size;
+            gc.reuse_count = cfg_.reuse_count;
             gc.pipeline_streams = cfg_.pipeline_streams;
             gc.pipeline_chunks = cfg_.pipeline_chunks;
         gc.pipeline_chunk_elements = cfg_.pipeline_chunk_elements;
@@ -638,6 +666,7 @@ public:
             gc.operation = cfg_.operation;
             gc.max_elements = std::max<std::size_t>(1, reducer_capacity);
             gc.block_size = cfg_.block_size;
+            gc.reuse_count = cfg_.reuse_count;
             gpus_.push_back(make_gpu_reducer(gc));
         }
         if (kind_ == SchedulerKind::DynamicAdaptive) initialize_throughput(calibration_elements);
@@ -679,7 +708,7 @@ public:
                         gpu_values[i].combine(partial.result, dataset_.dtype(), cfg_.operation);
                         accumulate_device_metrics(gpu_metrics[i], partial.device);
                         update_throughput(
-                            worker_id, range.count,
+                            worker_id, range.count * static_cast<std::size_t>(cfg_.reuse_count),
                             std::chrono::duration<double, std::micro>(chunk_end - chunk_start).count()
                         );
                     }
@@ -699,17 +728,17 @@ public:
             );
             if (range.count == 0) break;
             const auto chunk_start = clock_type::now();
-            auto partial = reduce_cpu(
+            auto partial = reduce_cpu_reused(
                 dataset_.offset_ptr(range.offset), range.count, dataset_.dtype(),
-                cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation
+                cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation, cfg_.reuse_count
             );
             const auto chunk_end = clock_type::now();
             cpu_value.combine(partial.result, dataset_.dtype(), cfg_.operation);
             cpu_metrics.compute_us += partial.compute_us;
-            cpu_metrics.chunks += 1;
-            cpu_metrics.elements += range.count;
+            cpu_metrics.chunks += static_cast<std::size_t>(cfg_.reuse_count);
+            cpu_metrics.elements += range.count * static_cast<std::size_t>(cfg_.reuse_count);
             update_throughput(
-                0, range.count,
+                0, range.count * static_cast<std::size_t>(cfg_.reuse_count),
                 std::chrono::duration<double, std::micro>(chunk_end - chunk_start).count()
             );
         }
@@ -742,19 +771,25 @@ private:
         if (sample_n == 0) throw std::logic_error("adaptive scheduler requires a positive calibration sample");
         throughput_.assign(1 + cfg_.gpu_ids.size(), 1.0);
         dataset_.advance_replica();
-        (void)reduce_cpu(dataset_.offset_ptr(calibration_offset(dataset_.count(), sample_n, 0)), sample_n,
-                         dataset_.dtype(), cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation);
+        (void)reduce_cpu_reused(
+            dataset_.offset_ptr(calibration_offset(dataset_.count(), sample_n, 0)), sample_n,
+            dataset_.dtype(), cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation, cfg_.reuse_count
+        );
         const double cpu_elapsed = robust_calibration_median(
             cfg_.calibration_bursts,
             cfg_.calibration_repetitions,
             [&](std::size_t sample_index) {
                 dataset_.advance_replica();
                 const auto offset = calibration_offset(dataset_.count(), sample_n, sample_index + 1);
-                return reduce_cpu(dataset_.offset_ptr(offset), sample_n, dataset_.dtype(),
-                                  cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation).compute_us;
+                return reduce_cpu_reused(
+                    dataset_.offset_ptr(offset), sample_n, dataset_.dtype(),
+                    cfg_.cpu_backend, cfg_.cpu_threads, cfg_.operation, cfg_.reuse_count
+                ).compute_us;
             }
         );
-        throughput_[0] = static_cast<double>(sample_n) / std::max(cpu_elapsed, 1e-6) * 1e6;
+        throughput_[0] =
+            static_cast<double>(sample_n) * static_cast<double>(cfg_.reuse_count) /
+            std::max(cpu_elapsed, 1e-6) * 1e6;
         prepare_metrics_.calibration_samples.push_back({"cpu", 0, -1, sample_n, cpu_elapsed, throughput_[0]});
         for (std::size_t i = 0; i < gpus_.size(); ++i) {
             std::unique_ptr<ScopedThreadAffinity> affinity;
@@ -772,7 +807,9 @@ private:
                     return gpus_[i]->reduce(dataset_.offset_ptr(offset), sample_n).device.total_us;
                 }
             );
-            throughput_[i + 1] = static_cast<double>(sample_n) / std::max(gpu_elapsed, 1e-6) * 1e6;
+            throughput_[i + 1] =
+                static_cast<double>(sample_n) * static_cast<double>(cfg_.reuse_count) /
+                std::max(gpu_elapsed, 1e-6) * 1e6;
             prepare_metrics_.calibration_samples.push_back({
                 "gpu", static_cast<int>(i), cfg_.gpu_ids[i], sample_n, gpu_elapsed, throughput_[i + 1]
             });
