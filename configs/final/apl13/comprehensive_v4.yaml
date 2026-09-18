@@ -452,11 +452,146 @@ experiments:
       memory_policy: interleave
       gpu_staging_numa: auto
 
+  # ---------------------------------------------------------------------------
+  # C. UNIVERSAL REUSE CHECK: the same reuse semantics are exercised across every
+  #    executable host-resident algorithm family on a representative 100M float32 SUM.
+  #    K=20/21 directly checks whether the break-even region seen for CUB generalizes.
+  #    This is separate from timing_repetitions (statistical samples).
+  # ---------------------------------------------------------------------------
+  - id: final_v4_universal_reuse_cpu
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: cpu_seq, params: {reuse_count: [1, 20, 21]}}
+      - {id: cpu_omp, params: {reuse_count: [1, 20, 21]}}
+      - {id: cpu_omp_simd, params: {reuse_count: [1, 20, 21]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: final_v4_universal_reuse_single_gpu_legacy
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: gpu_global_atomic, params: {block_size: 512, reuse_count: [1, 20, 21]}}
+      - {id: gpu_shared_naive, params: {block_size: 128, reuse_count: [1, 20, 21]}}
+      - {id: gpu_warp_atomic, params: {block_size: 512, reuse_count: [1, 20, 21]}}
+      - {id: gpu_two_pass, params: {block_size: 128, reuse_count: [1, 20, 21]}}
+      - {id: gpu_cub, params: {reuse_count: [1, 20, 21], use_cuda_graphs: false}}
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 1048576, reuse_count: [1, 20, 21]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: final_v4_universal_reuse_memory_paths
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: gpu_cub_chunked, params: {chunk_size: 67108864, reuse_count: [1, 20, 21]}}
+      - {id: gpu_cub_pinned_direct, params: {chunk_size: 67108864, reuse_count: [1, 20, 21]}}
+      - {id: gpu_cub_zero_copy, params: {reuse_count: [1, 20, 21]}}
+      - {id: gpu_cub_managed_fault, params: {reuse_count: [1, 20, 21]}}
+      - {id: gpu_cub_managed_prefetch, params: {reuse_count: [1, 20, 21]}}
+      - {id: gpu_cub_managed_advised, params: {reuse_count: [1, 20, 21]}}
+      - {id: gpu_cub_device_resident, params: {reuse_count: [1, 20, 21], use_cuda_graphs: false}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: final_v4_universal_reuse_multi_gpu
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: gpu_multi_cub_equal, params: {reuse_count: [1, 20, 21]}}
+      - {id: gpu_multi_cub_profiled, params: {reuse_count: [1, 20, 21]}}
+      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 1048576, reuse_count: [1, 20, 21]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [[0, 1]]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: final_v4_universal_reuse_hybrid
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: hybrid_static_equal, params: {reuse_count: [1, 20, 21]}}
+      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: 1048576, reuse_count: [1, 20, 21]}}
+      - {id: hybrid_static_profiled, params: {reuse_count: [1, 20, 21]}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: 1048576, reuse_count: [1, 20, 21]}}
+      - {id: hybrid_dynamic_fixed, params: {chunk_size: 1048576, reuse_count: [1, 20, 21]}}
+      - {id: hybrid_dynamic_guided, params: {min_chunk_size: 262144, guided_factor: 8.0, reuse_count: [1, 20, 21]}}
+      - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 262144, max_chunk_size: 16777216, target_chunk_ms: 1.0, ema_alpha: 0.25, reuse_count: [1, 20, 21]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [[0, 1]]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  # File-stream reuse deliberately rereads the source because the dataset is not resident.
+  # K=21 therefore measures the absence (or presence) of amortization in the OOC model.
+  - id: final_v4_universal_reuse_file_stream_cpu
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: cpu_omp_simd_file_stream, params: {chunk_size: 16777216, reuse_count: [1, 21]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: final_v4_universal_reuse_file_stream_gpu
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: gpu_cub_file_stream, params: {chunk_size: 16777216, reuse_count: [1, 21]}}
+      - {id: gpu_cub_file_stream_async, params: {pipeline_streams: 4, pipeline_chunk_elements: 16777216, reuse_count: [1, 21]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: final_v4_universal_reuse_file_stream_multi
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: gpu_multi_cub_file_stream_async, params: {pipeline_streams: 4, pipeline_chunk_elements: 16777216, reuse_count: [1, 21]}}
+      - {id: hybrid_file_stream_equal, params: {pipeline_streams: 4, pipeline_chunk_elements: 16777216, cpu_fraction: 0.50, reuse_count: [1, 21]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [[0, 1]]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
   - id: final_v4_hmm_capability_probe
     operations: [sum, min, max]
     datasets: &capability_datasets [*i32_1e6, *i64_1e6, *f32_1e6, *f64_1e6]
     algorithms:
-      - {id: gpu_cub_hmm, params: {reuse_count: 1}}
+      - {id: gpu_cub_hmm, params: {reuse_count: [1, 21]}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -469,7 +604,7 @@ experiments:
     operations: [sum, min, max]
     datasets: *capability_datasets
     algorithms:
-      - {id: gpu_cub_gds, params: {chunk_size: 16777216, reuse_count: 1}}
+      - {id: gpu_cub_gds, params: {chunk_size: 16777216, reuse_count: [1, 21]}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
