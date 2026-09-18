@@ -808,7 +808,11 @@ bool uses_integrated_strategy(const WorkerConfig& config) noexcept {
         config.memory_path == "zero_copy" || config.memory_path == "managed_fault" ||
         config.memory_path == "managed_prefetch" || config.memory_path == "managed_advised" ||
         config.memory_path == "hmm_system") return true;
-    if (config.reuse_count != 1 || config.use_cuda_graphs) return true;
+    if (config.use_cuda_graphs) return true;
+    if (config.reuse_count != 1 &&
+        (config.memory_path == "explicit_sync" || config.memory_path == "device_resident")) {
+        return true;
+    }
     return false;
 }
 
