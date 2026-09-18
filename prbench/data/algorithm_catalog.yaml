@@ -7,6 +7,7 @@ algorithms:
     uses_cpu: true
     uses_gpu: false
     supports_multi_gpu: false
+    tunables: [reuse_count]
     role: reference_baseline
 
   - id: cpu_omp
@@ -17,6 +18,7 @@ algorithms:
     uses_cpu: true
     uses_gpu: false
     supports_multi_gpu: false
+    tunables: [reuse_count]
     role: cpu_baseline
 
   - id: cpu_omp_simd
@@ -27,6 +29,7 @@ algorithms:
     uses_cpu: true
     uses_gpu: false
     supports_multi_gpu: false
+    tunables: [reuse_count]
     role: strong_cpu_baseline
 
   - id: cpu_omp_simd_file_stream
@@ -39,7 +42,7 @@ algorithms:
     uses_cpu: true
     uses_gpu: false
     supports_multi_gpu: false
-    tunables: [chunk_size]
+    tunables: [chunk_size, reuse_count]
     role: out_of_core_cpu_baseline
 
   - id: gpu_global_atomic
@@ -51,7 +54,7 @@ algorithms:
     uses_cpu: false
     uses_gpu: true
     supports_multi_gpu: false
-    tunables: [block_size]
+    tunables: [block_size, reuse_count]
     role: intentionally_naive_gpu_baseline
 
   - id: gpu_shared_naive
@@ -63,7 +66,7 @@ algorithms:
     uses_cpu: false
     uses_gpu: true
     supports_multi_gpu: false
-    tunables: [block_size]
+    tunables: [block_size, reuse_count]
     role: shared_memory_baseline
 
   - id: gpu_warp_atomic
@@ -75,7 +78,7 @@ algorithms:
     uses_cpu: false
     uses_gpu: true
     supports_multi_gpu: false
-    tunables: [block_size]
+    tunables: [block_size, reuse_count]
     role: optimized_custom_gpu
 
   - id: gpu_two_pass
@@ -87,7 +90,7 @@ algorithms:
     uses_cpu: false
     uses_gpu: true
     supports_multi_gpu: false
-    tunables: [block_size]
+    tunables: [block_size, reuse_count]
     role: optimized_custom_gpu
 
   - id: gpu_cub
@@ -258,6 +261,7 @@ algorithms:
     uses_gpu: true
     supports_multi_gpu: true
     min_gpus: 2
+    tunables: [reuse_count]
     role: multi_gpu_baseline
 
   - id: gpu_multi_cub_profiled
@@ -270,6 +274,7 @@ algorithms:
     uses_gpu: true
     supports_multi_gpu: true
     min_gpus: 2
+    tunables: [reuse_count]
     role: multi_gpu_calibrated_baseline
 
   - id: gpu_multi_cub_async
@@ -311,6 +316,7 @@ algorithms:
     uses_cpu: true
     uses_gpu: true
     supports_multi_gpu: true
+    tunables: [reuse_count]
     role: macro_baseline
 
   - id: hybrid_static_equal_async
@@ -324,7 +330,7 @@ algorithms:
     uses_cpu: true
     uses_gpu: true
     supports_multi_gpu: true
-    tunables: [pipeline_streams, pipeline_chunks, pipeline_chunk_elements]
+    tunables: [pipeline_streams, pipeline_chunks, pipeline_chunk_elements, reuse_count]
     role: hybrid_transfer_overlap
 
   - id: hybrid_static_profiled
@@ -337,6 +343,7 @@ algorithms:
     uses_cpu: true
     uses_gpu: true
     supports_multi_gpu: true
+    tunables: [reuse_count]
     role: calibrated_static
 
   - id: hybrid_static_profiled_async
@@ -350,7 +357,7 @@ algorithms:
     uses_cpu: true
     uses_gpu: true
     supports_multi_gpu: true
-    tunables: [pipeline_streams, pipeline_chunks, pipeline_chunk_elements]
+    tunables: [pipeline_streams, pipeline_chunks, pipeline_chunk_elements, reuse_count]
     role: transfer_overlap_variant
 
   - id: hybrid_file_stream_equal
@@ -365,7 +372,7 @@ algorithms:
     uses_cpu: true
     uses_gpu: true
     supports_multi_gpu: true
-    tunables: [pipeline_streams, pipeline_chunk_elements, cpu_fraction]
+    tunables: [pipeline_streams, pipeline_chunk_elements, cpu_fraction, reuse_count]
     role: out_of_core_hybrid
 
   - id: hybrid_dynamic_fixed
@@ -378,7 +385,7 @@ algorithms:
     uses_cpu: true
     uses_gpu: true
     supports_multi_gpu: true
-    tunables: [chunk_size]
+    tunables: [chunk_size, reuse_count]
     role: dynamic_baseline
 
   - id: hybrid_dynamic_guided
@@ -391,7 +398,7 @@ algorithms:
     uses_cpu: true
     uses_gpu: true
     supports_multi_gpu: true
-    tunables: [min_chunk_size, max_chunk_size, guided_factor]
+    tunables: [min_chunk_size, max_chunk_size, guided_factor, reuse_count]
     role: dynamic_guided
 
   - id: hybrid_dynamic_adaptive
@@ -404,7 +411,7 @@ algorithms:
     uses_cpu: true
     uses_gpu: true
     supports_multi_gpu: true
-    tunables: [min_chunk_size, max_chunk_size, target_chunk_ms, ema_alpha]
+    tunables: [min_chunk_size, max_chunk_size, target_chunk_ms, ema_alpha, reuse_count]
     role: adaptive_scheduler
 
   - id: gpu_cub_gds
