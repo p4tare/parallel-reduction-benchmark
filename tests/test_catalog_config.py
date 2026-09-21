@@ -139,32 +139,40 @@ def test_final_apl13_configs_validate() -> None:
     assert out_of_core.measurement.blocks == 3
     assert extended.measurement.blocks == 3
     assert extended.sweeps.reuse_count == [1, 2, 3, 4, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]
-    assert extended.sweeps.transfer_chunk_elements == [
-        262144, 1048576, 4194304, 16777216, 67108864,
-        134217728, 268435456, 536870912, 1073741824,
-    ]
 
 
-def test_extended_apl13_scale_covers_1e5_through_1e10_and_out_of_core() -> None:
+def test_extended_apl13_24h_campaign_retains_baseline_and_focuses_extensions() -> None:
     root = Path(__file__).resolve().parents[1]
     cfg = ConfigurationLoader(AlgorithmCatalog()).load(
         root / "configs" / "final" / "apl13" / "comprehensive_reuse_chunks_v4.yaml"
     )
     by_group = {group.id: group for group in cfg.experiments}
 
-    scale = by_group["final_v4_cpu_seq_simd_core"].datasets
-    expected_sizes = {10**5, 10**6, 10**7, 10**8, 10**9, 10**10}
+    core = by_group["final_v4_cpu_seq_simd_core"].datasets
+    expected_core_sizes = {10**5, 10**6, 10**7, 10**8}
     for dtype in ("int32", "int64", "float32", "float64"):
-        assert {item.size for item in scale if item.dtype.value == dtype} == expected_sizes
+        assert {item.size for item in core if item.dtype.value == dtype} == expected_core_sizes
 
-    resident = by_group["final_v4_single_gpu_legacy_core"].datasets
-    assert not any(
-        item.size == 10**10 and item.dtype.value in {"int64", "float64"}
-        for item in resident
-    )
+    assert "final_v4_large_cpu_reference" in by_group
+    assert "final_v4_above_vram_cpu_reference" in by_group
+    assert "final_v4_reuse_cub_gpu0" in by_group
+    assert "final_v4_universal_reuse_single_gpu_legacy" in by_group
 
-    out_of_core = by_group["extended_v4_out_of_core_192gib_cpu"].datasets
-    assert len(out_of_core) == 1
-    assert out_of_core[0].dtype.value == "float32"
-    assert out_of_core[0].size == 51_539_607_552
-    assert out_of_core[0].size * 4 == 192 * (1024**3)
+    assert "extended_v4_out_of_core_192gib_cpu" not in by_group
+
+    small = by_group["extended_24h_chunk_reuse_single_gpu"]
+    small_chunks = {
+        int(value)
+        for algorithm in small.algorithms
+        for value in (
+            algorithm.params.get("chunk_size")
+            or algorithm.params.get("pipeline_chunk_elements")
+            or []
+        )
+    }
+    assert small_chunks == {262144, 1048576, 4194304, 16777216, 67108864}
+
+    large = by_group["extended_24h_large_chunk_reuse_single_gpu_async"]
+    assert large.algorithms[0].params["pipeline_chunk_elements"] == [
+        67108864, 134217728, 268435456, 536870912, 1073741824
+    ]
