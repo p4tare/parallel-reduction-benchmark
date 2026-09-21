@@ -197,12 +197,27 @@ class BuildConfig(StrictModel):
     cuda_host_compiler: str | None = None
 
 
+class GlobalSweepConfig(StrictModel):
+    reuse_count: list[int] = Field(default_factory=list)
+    transfer_chunk_elements: list[int] = Field(default_factory=list)
+
+    @field_validator("reuse_count", "transfer_chunk_elements")
+    @classmethod
+    def positive_unique_values(cls, value: list[int]) -> list[int]:
+        if any(isinstance(v, bool) or not isinstance(v, int) or v <= 0 for v in value):
+            raise ValueError("global sweep values must be positive integers")
+        if len(value) != len(set(value)):
+            raise ValueError("global sweep values must not contain duplicates")
+        return value
+
+
 class ExperimentGroup(StrictModel):
     id: str
     datasets: list[DatasetSpec]
     algorithms: list[AlgorithmRequest]
     operations: list[ReductionOperation] = Field(default_factory=lambda: [ReductionOperation.sum])
     hardware: HardwareConfig = Field(default_factory=HardwareConfig)
+    use_global_reuse_count: bool = False
 
     @field_validator("operations")
     @classmethod
@@ -222,6 +237,7 @@ class RootConfig(StrictModel):
     energy: EnergyConfig = Field(default_factory=EnergyConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
     system_baselines: SystemBaselineConfig = Field(default_factory=SystemBaselineConfig)
+    sweeps: GlobalSweepConfig = Field(default_factory=GlobalSweepConfig)
     experiments: list[ExperimentGroup]
 
     @field_validator("experiments")
