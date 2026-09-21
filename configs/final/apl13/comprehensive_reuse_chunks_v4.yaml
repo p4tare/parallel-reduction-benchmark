@@ -18,7 +18,7 @@ dataset_cache_dir: .prbench/datasets
 # All algorithms exposing chunk_size or pipeline_chunk_elements automatically receive
 # the complete transfer_chunk_elements sweep unless they intentionally override it.
 sweeps:
-  reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]
+  reuse_count: [1, 2, 3, 4, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]
   transfer_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864, 134217728, 268435456, 536870912, 1073741824]
 
 build:
