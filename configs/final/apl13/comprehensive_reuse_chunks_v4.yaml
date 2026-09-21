@@ -1,9 +1,8 @@
 # APL13 EXTENDED V4 REUSE + TRANSFER-CHUNK CAMPAIGN
 # Confirmatory thesis campaign combining legacy algorithms with the integrated v4 memory,
 # topology and storage paths. This follow-up deliberately expands reuse and transfer-chunk sweeps;
-# # runtime may substantially exceed the original campaign. The design still avoids a full
-# # chunk-size Cartesian product over every dtype/operation/N; chunk sensitivity is measured
-# # on representative float32 SUM conditions where all five chunk sizes are physically distinct.
+# Runtime may substantially exceed the original campaign. The design keeps the original
+# comparison matrix and applies the canonical chunk sweep to every chunk-capable algorithm.
 #
 # Single-GPU experiments always use GPU 0. Multi-GPU experiments always use GPUs [0,1].
 # HMM and GDS are retained only as capability probes because apl13 cannot execute them.
@@ -19,6 +18,7 @@ dataset_cache_dir: .prbench/datasets
 # All algorithms exposing chunk_size or pipeline_chunk_elements automatically receive
 # the complete transfer_chunk_elements sweep unless they intentionally override it.
 sweeps:
+  reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]
   transfer_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864, 134217728, 268435456, 536870912, 1073741824]
 
 build:
