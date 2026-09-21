@@ -8,8 +8,8 @@
 # Single-GPU experiments always use GPU 0. Multi-GPU experiments always use GPUs [0,1].
 # HMM and GDS are retained only as capability probes because apl13 cannot execute them.
 # Reuse sweeps use K=[1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100] for practical methods.
-# Five transfer chunk sizes are swept: 262144, 1048576, 4194304, 16777216, 67108864 elements.
-# For float32 these correspond to 1, 4, 16, 64 and 256 MiB; for float64 to 2, 8, 32, 128 and 512 MiB.
+# Transfer chunks are swept from 1 MiB to 256 MiB on the 100M float32 dataset, plus a dedicated
+# 4 GiB dataset sweep at 256 MiB, 512 MiB, 1 GiB, 2 GiB and 4 GiB.
 
 output_dir: results/apl13_extended_reuse_chunks_v4
 dataset_cache_dir: .prbench/datasets
@@ -812,6 +812,95 @@ experiments:
   - id: extended_v4_whole_transfer_reference
     operations: [sum]
     datasets: [*f32_1e8]
+    algorithms:
+      - {id: cpu_omp_simd, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: gpu_cub, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100], use_cuda_graphs: false}}
+      - {id: gpu_cub_device_resident, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100], use_cuda_graphs: false}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  # ---------------------------------------------------------------------------
+  # F. LARGE TRANSFER-CHUNK SENSITIVITY
+  #    4 GiB float32 SUM dataset. This section extends the chunk sweep above the
+  #    381 MiB representative dataset so 512 MiB, 1 GiB, 2 GiB and 4 GiB chunks
+  #    are physically distinct for a single GPU.
+  #
+  #    Chunk sizes (float32):
+  #      67108864    elements =  256 MiB
+  #      134217728   elements =  512 MiB
+  #      268435456   elements =    1 GiB
+  #      536870912   elements =    2 GiB
+  #      1073741824  elements =    4 GiB
+  #
+  #    For two-GPU equal partitions each GPU owns about 2 GiB, therefore the
+  #    nominal 4 GiB chunk is effectively capped by the per-GPU partition size.
+  # ---------------------------------------------------------------------------
+  - id: extended_v4_large_chunk_single_gpu
+    operations: [sum]
+    datasets: [*reuse_f32]
+    algorithms:
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: gpu_cub_chunked, params: {chunk_size: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: gpu_cub_pinned_direct, params: {chunk_size: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: extended_v4_large_chunk_multi_gpu
+    operations: [sum]
+    datasets: [*reuse_f32]
+    algorithms:
+      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [[0, 1]]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: extended_v4_large_chunk_hybrid_one_gpu
+    operations: [sum]
+    datasets: [*reuse_f32]
+    algorithms:
+      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: extended_v4_large_chunk_hybrid_two_gpu
+    operations: [sum]
+    datasets: [*reuse_f32]
+    algorithms:
+      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [[0, 1]]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  # Whole-transfer controls on the same 4 GiB dataset. gpu_cub represents one
+  # application-level H2D copy of all 4 GiB; device_resident isolates the kernel.
+  - id: extended_v4_large_chunk_whole_transfer_reference
+    operations: [sum]
+    datasets: [*reuse_f32]
     algorithms:
       - {id: cpu_omp_simd, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
       - {id: gpu_cub, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100], use_cuda_graphs: false}}
