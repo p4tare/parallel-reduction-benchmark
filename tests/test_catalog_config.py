@@ -143,3 +143,28 @@ def test_final_apl13_configs_validate() -> None:
         262144, 1048576, 4194304, 16777216, 67108864,
         134217728, 268435456, 536870912, 1073741824,
     ]
+
+
+def test_extended_apl13_scale_covers_1e5_through_1e10_and_out_of_core() -> None:
+    root = Path(__file__).resolve().parents[1]
+    cfg = ConfigurationLoader(AlgorithmCatalog()).load(
+        root / "configs" / "final" / "apl13" / "comprehensive_reuse_chunks_v4.yaml"
+    )
+    by_group = {group.id: group for group in cfg.experiments}
+
+    scale = by_group["final_v4_cpu_seq_simd_core"].datasets
+    expected_sizes = {10**5, 10**6, 10**7, 10**8, 10**9, 10**10}
+    for dtype in ("int32", "int64", "float32", "float64"):
+        assert {item.size for item in scale if item.dtype.value == dtype} == expected_sizes
+
+    resident = by_group["final_v4_single_gpu_legacy_core"].datasets
+    assert not any(
+        item.size == 10**10 and item.dtype.value in {"int64", "float64"}
+        for item in resident
+    )
+
+    out_of_core = by_group["extended_v4_out_of_core_192gib_cpu"].datasets
+    assert len(out_of_core) == 1
+    assert out_of_core[0].dtype.value == "float32"
+    assert out_of_core[0].size == 51_539_607_552
+    assert out_of_core[0].size * 4 == 192 * (1024**3)
