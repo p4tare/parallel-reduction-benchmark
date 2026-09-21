@@ -644,16 +644,9 @@ experiments:
 
   # ---------------------------------------------------------------------------
   # D. LARGE-DATA CHUNK/REUSE CROSS-CHECK
-  #    4 GiB float32 SUM dataset. This section extends the chunk sweep above the
-  #    381 MiB representative dataset so 512 MiB, 1 GiB, 2 GiB and 4 GiB chunks
-  #    are physically distinct for a single GPU.
-  #
-  #    Chunk sizes (float32):
-  #      67108864    elements =  256 MiB
-  #      134217728   elements =  512 MiB
-  #      268435456   elements =    1 GiB
-  #      536870912   elements =    2 GiB
-  #      1073741824  elements =    4 GiB
+  #    4 GiB float32 SUM dataset. The same global 9-point chunk sweep is used here:
+  #    1, 4, 16, 64, 256, 512 MiB, 1 GiB, 2 GiB and 4 GiB.
+  #    Unlike the 381 MiB dataset, the large values are physically distinct on one GPU.
   #
   #    For two-GPU equal partitions each GPU owns about 2 GiB, therefore the
   #    nominal 4 GiB chunk is effectively capped by the per-GPU partition size.
