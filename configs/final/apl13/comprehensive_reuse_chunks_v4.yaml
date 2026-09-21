@@ -7,12 +7,20 @@
 #
 # Single-GPU experiments always use GPU 0. Multi-GPU experiments always use GPUs [0,1].
 # HMM and GDS are retained only as capability probes because apl13 cannot execute them.
-# Reuse sweeps use K=[1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100] for practical methods.
-# Transfer chunks are swept from 1 MiB to 256 MiB on the 100M float32 dataset, plus a dedicated
-# 4 GiB dataset sweep at 256 MiB, 512 MiB, 1 GiB, 2 GiB and 4 GiB.
+# Reuse values are defined once in sweeps.reuse_count and reused by all reuse-enabled groups.
+# Transfer chunk sizes are defined once in sweeps.transfer_chunk_elements and automatically
+# applied to every algorithm exposing chunk_size or pipeline_chunk_elements.
 
 output_dir: results/apl13_extended_reuse_chunks_v4
 dataset_cache_dir: .prbench/datasets
+
+# Global experiment dimensions. Groups opt into the reuse sweep with
+# use_global_reuse_count: true. Transfer chunk sizes are automatically applied
+# to every algorithm exposing chunk_size or pipeline_chunk_elements unless that
+# algorithm intentionally supplies a local override (e.g. unavailable GDS probe).
+sweeps:
+  reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]
+  transfer_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864, 134217728, 268435456, 536870912, 1073741824]
 
 build:
   build_dir: build
@@ -125,12 +133,12 @@ experiments:
     operations: [sum, min, max]
     datasets: *core_datasets
     algorithms:
-      - {id: gpu_global_atomic, params: {block_size: 512}}
+      - {id: gpu_global_atomic, params: {block_size: 512, reuse_count: [1, 5, 10, 15, 20, 21]}}
       - {id: gpu_shared_naive, params: {block_size: 128}}
       - {id: gpu_warp_atomic, params: {block_size: 512}}
       - {id: gpu_two_pass, params: {block_size: 128}}
-      - {id: gpu_cub, params: {reuse_count: 1, use_cuda_graphs: false}}
-      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 1048576, reuse_count: 1}}
+      - {id: gpu_cub, params: {use_cuda_graphs: false}}
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -143,13 +151,13 @@ experiments:
     operations: [sum, min, max]
     datasets: *core_datasets
     algorithms:
-      - {id: gpu_cub_chunked, params: {chunk_size: 67108864, reuse_count: 1}}
-      - {id: gpu_cub_pinned_direct, params: {chunk_size: 67108864, reuse_count: 1}}
+      - {id: gpu_cub_chunked, params: {chunk_size: 67108864}}
+      - {id: gpu_cub_pinned_direct, params: {chunk_size: 67108864}}
       - {id: gpu_cub_zero_copy, params: {reuse_count: 1}}
       - {id: gpu_cub_managed_fault, params: {reuse_count: 1}}
       - {id: gpu_cub_managed_prefetch, params: {reuse_count: 1}}
       - {id: gpu_cub_managed_advised, params: {reuse_count: 1}}
-      - {id: gpu_cub_device_resident, params: {reuse_count: 1, use_cuda_graphs: false}}
+      - {id: gpu_cub_device_resident, params: {use_cuda_graphs: false}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -163,12 +171,12 @@ experiments:
     datasets: *core_datasets
     algorithms:
       - {id: hybrid_static_equal}
-      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: 1048576}}
+      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
       - {id: hybrid_static_profiled}
-      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: 1048576}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
       - {id: hybrid_dynamic_fixed, params: {chunk_size: 1048576}}
-      - {id: hybrid_dynamic_guided, params: {min_chunk_size: 262144, guided_factor: 8.0}}
-      - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 262144, max_chunk_size: 16777216, target_chunk_ms: 1.0, ema_alpha: 0.25}}
+      - {id: hybrid_dynamic_guided, params: {min_guided_factor: 8.0}}
+      - {id: hybrid_dynamic_adaptive, params: {min_max_target_chunk_ms: 1.0, ema_alpha: 0.25}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -183,7 +191,7 @@ experiments:
     algorithms:
       - {id: gpu_multi_cub_equal}
       - {id: gpu_multi_cub_profiled}
-      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 1048576, reuse_count: 1}}
+      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -197,12 +205,12 @@ experiments:
     datasets: *medium_datasets
     algorithms:
       - {id: hybrid_static_equal}
-      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: 1048576}}
+      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
       - {id: hybrid_static_profiled}
-      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: 1048576}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
       - {id: hybrid_dynamic_fixed, params: {chunk_size: 1048576}}
-      - {id: hybrid_dynamic_guided, params: {min_chunk_size: 262144, guided_factor: 8.0}}
-      - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 262144, max_chunk_size: 16777216, target_chunk_ms: 1.0, ema_alpha: 0.25}}
+      - {id: hybrid_dynamic_guided, params: {min_guided_factor: 8.0}}
+      - {id: hybrid_dynamic_adaptive, params: {min_max_target_chunk_ms: 1.0, ema_alpha: 0.25}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -228,8 +236,8 @@ experiments:
     operations: [sum, min, max]
     datasets: *medium_datasets
     algorithms:
-      - {id: gpu_cub_file_stream, params: {chunk_size: 16777216, reuse_count: 1}}
-      - {id: gpu_cub_file_stream_async, params: {pipeline_streams: 4, pipeline_chunk_elements: 16777216, reuse_count: 1}}
+      - {id: gpu_cub_file_stream, params: {chunk_size: 16777216}}
+      - {id: gpu_cub_file_stream_async, params: {pipeline_streams: 4}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -242,7 +250,7 @@ experiments:
     operations: [sum, min, max]
     datasets: *medium_datasets
     algorithms:
-      - {id: gpu_multi_cub_file_stream_async, params: {pipeline_streams: 4, pipeline_chunk_elements: 16777216, reuse_count: 1}}
+      - {id: gpu_multi_cub_file_stream_async, params: {pipeline_streams: 4}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -255,7 +263,7 @@ experiments:
     operations: [sum, min, max]
     datasets: *medium_datasets
     algorithms:
-      - {id: hybrid_file_stream_equal, params: {pipeline_streams: 4, pipeline_chunk_elements: 16777216, cpu_fraction: 0.50}}
+      - {id: hybrid_file_stream_equal, params: {pipeline_streams: 4, cpu_fraction: 0.50}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -268,7 +276,7 @@ experiments:
     operations: [sum, min, max]
     datasets: *medium_datasets
     algorithms:
-      - {id: hybrid_file_stream_equal, params: {pipeline_streams: 4, pipeline_chunk_elements: 16777216, cpu_fraction: 0.50}}
+      - {id: hybrid_file_stream_equal, params: {pipeline_streams: 4, cpu_fraction: 0.50}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -298,15 +306,15 @@ experiments:
     operations: [sum, min, max]
     datasets: *large_datasets
     algorithms:
-      - {id: gpu_cub, params: {reuse_count: 1, use_cuda_graphs: false}}
-      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864, reuse_count: 1}}
-      - {id: gpu_cub_chunked, params: {chunk_size: 67108864, reuse_count: 1}}
-      - {id: gpu_cub_pinned_direct, params: {chunk_size: 67108864, reuse_count: 1}}
+      - {id: gpu_cub, params: {use_cuda_graphs: false}}
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
+      - {id: gpu_cub_chunked, params: {chunk_size: 67108864}}
+      - {id: gpu_cub_pinned_direct, params: {chunk_size: 67108864}}
       - {id: gpu_cub_zero_copy, params: {reuse_count: 1}}
       - {id: gpu_cub_managed_fault, params: {reuse_count: 1}}
       - {id: gpu_cub_managed_prefetch, params: {reuse_count: 1}}
       - {id: gpu_cub_managed_advised, params: {reuse_count: 1}}
-      - {id: gpu_cub_device_resident, params: {reuse_count: 1, use_cuda_graphs: false}}
+      - {id: gpu_cub_device_resident, params: {use_cuda_graphs: false}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -321,7 +329,7 @@ experiments:
     algorithms:
       - {id: gpu_multi_cub_equal}
       - {id: gpu_multi_cub_profiled}
-      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864, reuse_count: 1}}
+      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -335,8 +343,8 @@ experiments:
     datasets: *large_datasets
     algorithms:
       - {id: hybrid_static_equal}
-      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864}}
-      - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 262144, max_chunk_size: 16777216, target_chunk_ms: 1.0, ema_alpha: 0.25}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
+      - {id: hybrid_dynamic_adaptive, params: {min_max_target_chunk_ms: 1.0, ema_alpha: 0.25}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -369,8 +377,8 @@ experiments:
     operations: [sum]
     datasets: *above_vram_64gib
     algorithms:
-      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864, reuse_count: 1}}
-      - {id: gpu_cub_chunked, params: {chunk_size: 67108864, reuse_count: 1}}
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
+      - {id: gpu_cub_chunked, params: {chunk_size: 67108864}}
       - {id: gpu_cub_zero_copy, params: {reuse_count: 1}}
       - {id: gpu_cub_managed_fault, params: {reuse_count: 1}}
       - {id: gpu_cub_managed_prefetch, params: {reuse_count: 1}}
@@ -388,8 +396,8 @@ experiments:
     algorithms:
       - {id: gpu_multi_cub_equal}
       - {id: gpu_multi_cub_profiled}
-      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864, reuse_count: 1}}
-      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864}}
+      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -399,6 +407,7 @@ experiments:
       gpu_staging_numa: auto
 
   - id: final_v4_reuse_cpu_reference
+    use_global_reuse_count: true
     operations: [sum, min, max]
     datasets: &reuse_4gib_datasets
       - &reuse_i32 {size: 1073741824, dtype: int32, distribution: integers, seed: 62101, low: -1, high: 1}
@@ -416,10 +425,11 @@ experiments:
       gpu_staging_numa: auto
 
   - id: final_v4_reuse_cub_gpu0
+    use_global_reuse_count: true
     operations: [sum, min, max]
     datasets: *reuse_4gib_datasets
     algorithms:
-      - {id: gpu_cub, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100], use_cuda_graphs: false}}
+      - {id: gpu_cub, params: {use_cuda_graphs: false}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -429,10 +439,11 @@ experiments:
       gpu_staging_numa: auto
 
   - id: final_v4_reuse_device_resident_gpu0
+    use_global_reuse_count: true
     operations: [sum, min, max]
     datasets: *reuse_4gib_datasets
     algorithms:
-      - {id: gpu_cub_device_resident, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100], use_cuda_graphs: false}}
+      - {id: gpu_cub_device_resident, params: {use_cuda_graphs: false}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -462,6 +473,7 @@ experiments:
   #    This is separate from timing_repetitions (statistical samples).
   # ---------------------------------------------------------------------------
   - id: final_v4_universal_reuse_cpu_seq_simd
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
@@ -476,6 +488,7 @@ experiments:
       gpu_staging_numa: auto
 
   - id: final_v4_universal_reuse_cpu_omp
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
@@ -489,15 +502,16 @@ experiments:
       gpu_staging_numa: auto
 
   - id: final_v4_universal_reuse_single_gpu_legacy
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: gpu_global_atomic, params: {block_size: 512, reuse_count: [1, 5, 10, 15, 20, 21]}}
-      - {id: gpu_shared_naive, params: {block_size: 128, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: gpu_warp_atomic, params: {block_size: 512, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: gpu_two_pass, params: {block_size: 128, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: gpu_cub, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100], use_cuda_graphs: false}}
-      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 1048576, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: gpu_global_atomic, params: {block_size: 512}}
+      - {id: gpu_shared_naive, params: {block_size: 128}}
+      - {id: gpu_warp_atomic, params: {block_size: 512}}
+      - {id: gpu_two_pass, params: {block_size: 128}}
+      - {id: gpu_cub, params: {use_cuda_graphs: false}}
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -507,16 +521,17 @@ experiments:
       gpu_staging_numa: auto
 
   - id: final_v4_universal_reuse_memory_paths
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: gpu_cub_chunked, params: {chunk_size: 67108864, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: gpu_cub_pinned_direct, params: {chunk_size: 67108864, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: gpu_cub_chunked, params: {chunk_size: 67108864}}
+      - {id: gpu_cub_pinned_direct, params: {chunk_size: 67108864}}
       - {id: gpu_cub_zero_copy, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
       - {id: gpu_cub_managed_fault, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
       - {id: gpu_cub_managed_prefetch, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
       - {id: gpu_cub_managed_advised, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: gpu_cub_device_resident, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100], use_cuda_graphs: false}}
+      - {id: gpu_cub_device_resident, params: {use_cuda_graphs: false}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -526,12 +541,13 @@ experiments:
       gpu_staging_numa: auto
 
   - id: final_v4_universal_reuse_multi_gpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
       - {id: gpu_multi_cub_equal, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
       - {id: gpu_multi_cub_profiled, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 1048576, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -541,16 +557,17 @@ experiments:
       gpu_staging_numa: auto
 
   - id: final_v4_universal_reuse_hybrid_one_gpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
       - {id: hybrid_static_equal, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: 1048576, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
       - {id: hybrid_static_profiled, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: 1048576, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: hybrid_dynamic_fixed, params: {chunk_size: 1048576, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: hybrid_dynamic_guided, params: {min_chunk_size: 262144, guided_factor: 8.0, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 262144, max_chunk_size: 16777216, target_chunk_ms: 1.0, ema_alpha: 0.25, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
+      - {id: hybrid_dynamic_fixed, params: {chunk_size: 1048576}}
+      - {id: hybrid_dynamic_guided, params: {min_guided_factor: 8.0}}
+      - {id: hybrid_dynamic_adaptive, params: {min_max_target_chunk_ms: 1.0, ema_alpha: 0.25}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -560,16 +577,17 @@ experiments:
       gpu_staging_numa: auto
 
   - id: final_v4_universal_reuse_hybrid
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
       - {id: hybrid_static_equal, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: 1048576, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
       - {id: hybrid_static_profiled, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: 1048576, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: hybrid_dynamic_fixed, params: {chunk_size: 1048576, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: hybrid_dynamic_guided, params: {min_chunk_size: 262144, guided_factor: 8.0, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 262144, max_chunk_size: 16777216, target_chunk_ms: 1.0, ema_alpha: 0.25, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
+      - {id: hybrid_dynamic_fixed, params: {chunk_size: 1048576}}
+      - {id: hybrid_dynamic_guided, params: {min_guided_factor: 8.0}}
+      - {id: hybrid_dynamic_adaptive, params: {min_max_target_chunk_ms: 1.0, ema_alpha: 0.25}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -582,10 +600,11 @@ experiments:
   # The full K sweep therefore measures whether repeated file-backed reductions show
   # any amortization despite rereading the source rather than retaining it in VRAM.
   - id: final_v4_universal_reuse_file_stream_cpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: cpu_omp_simd_file_stream, params: {chunk_size: 16777216, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: cpu_omp_simd_file_stream, params: {chunk_size: 16777216}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -595,11 +614,12 @@ experiments:
       gpu_staging_numa: auto
 
   - id: final_v4_universal_reuse_file_stream_gpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: gpu_cub_file_stream, params: {chunk_size: 16777216, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: gpu_cub_file_stream_async, params: {pipeline_streams: 4, pipeline_chunk_elements: 16777216, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: gpu_cub_file_stream, params: {chunk_size: 16777216}}
+      - {id: gpu_cub_file_stream_async, params: {pipeline_streams: 4}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -609,11 +629,12 @@ experiments:
       gpu_staging_numa: auto
 
   - id: final_v4_universal_reuse_file_stream_multi
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: gpu_multi_cub_file_stream_async, params: {pipeline_streams: 4, pipeline_chunk_elements: 16777216, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: hybrid_file_stream_equal, params: {pipeline_streams: 4, pipeline_chunk_elements: 16777216, cpu_fraction: 0.50, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: gpu_multi_cub_file_stream_async, params: {pipeline_streams: 4}}
+      - {id: hybrid_file_stream_equal, params: {pipeline_streams: 4, cpu_fraction: 0.50}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -633,7 +654,7 @@ experiments:
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864, reuse_count: 1}}
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -646,7 +667,7 @@ experiments:
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864, reuse_count: 1}}
+      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -659,7 +680,7 @@ experiments:
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864, reuse_count: 1}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -681,12 +702,13 @@ experiments:
   #    transfer strategies so K×chunk interactions can be measured directly.
   # ---------------------------------------------------------------------------
   - id: extended_v4_chunk_sweep_single_gpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: gpu_cub_chunked, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: gpu_cub_pinned_direct, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
+      - {id: gpu_cub_chunked, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864]}}
+      - {id: gpu_cub_pinned_direct, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864]}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -696,10 +718,11 @@ experiments:
       gpu_staging_numa: auto
 
   - id: extended_v4_chunk_sweep_multi_gpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -709,11 +732,12 @@ experiments:
       gpu_staging_numa: auto
 
   - id: extended_v4_chunk_sweep_hybrid_one_gpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -723,11 +747,12 @@ experiments:
       gpu_staging_numa: auto
 
   - id: extended_v4_chunk_sweep_hybrid_two_gpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -739,10 +764,11 @@ experiments:
   # File-backed paths are also sensitive to transfer chunking. They use the same
   # full K grid despite the higher I/O cost so reuse comparisons remain symmetric.
   - id: extended_v4_chunk_sweep_file_stream_cpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: cpu_omp_simd_file_stream, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: cpu_omp_simd_file_stream, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864]}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -752,11 +778,12 @@ experiments:
       gpu_staging_numa: auto
 
   - id: extended_v4_chunk_sweep_file_stream_single_gpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: gpu_cub_file_stream, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: gpu_cub_file_stream_async, params: {pipeline_streams: 4, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: gpu_cub_file_stream, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864]}}
+      - {id: gpu_cub_file_stream_async, params: {pipeline_streams: 4}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -766,11 +793,12 @@ experiments:
       gpu_staging_numa: auto
 
   - id: extended_v4_chunk_sweep_file_stream_multi_gpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: gpu_multi_cub_file_stream_async, params: {pipeline_streams: 4, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: hybrid_file_stream_equal, params: {pipeline_streams: 4, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864], cpu_fraction: 0.50, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: gpu_multi_cub_file_stream_async, params: {pipeline_streams: 4}}
+      - {id: hybrid_file_stream_equal, params: {pipeline_streams: 4, cpu_fraction: 0.50}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -782,10 +810,11 @@ experiments:
   # Dynamic-fixed chunk_size is a scheduler work quantum rather than a pure H2D packet.
   # It is swept separately to avoid conflating scheduler granularity with transfer chunking.
   - id: extended_v4_dynamic_fixed_chunk_sensitivity_one_gpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: hybrid_dynamic_fixed, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: hybrid_dynamic_fixed, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864]}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -795,10 +824,11 @@ experiments:
       gpu_staging_numa: auto
 
   - id: extended_v4_dynamic_fixed_chunk_sensitivity_two_gpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: hybrid_dynamic_fixed, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: hybrid_dynamic_fixed, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864]}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -810,12 +840,13 @@ experiments:
   # Whole-dataset explicit-copy baseline: it has no application-level chunk_size.
   # This reference lets the chunked/pipelined sweep be compared with one H2D copy.
   - id: extended_v4_whole_transfer_reference
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
       - {id: cpu_omp_simd, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: gpu_cub, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100], use_cuda_graphs: false}}
-      - {id: gpu_cub_device_resident, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100], use_cuda_graphs: false}}
+      - {id: gpu_cub, params: {use_cuda_graphs: false}}
+      - {id: gpu_cub_device_resident, params: {use_cuda_graphs: false}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -841,12 +872,13 @@ experiments:
   #    nominal 4 GiB chunk is effectively capped by the per-GPU partition size.
   # ---------------------------------------------------------------------------
   - id: extended_v4_large_chunk_single_gpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*reuse_f32]
     algorithms:
-      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: gpu_cub_chunked, params: {chunk_size: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: gpu_cub_pinned_direct, params: {chunk_size: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
+      - {id: gpu_cub_chunked, params: {chunk_size: [67108864, 134217728, 268435456, 536870912, 1073741824]}}
+      - {id: gpu_cub_pinned_direct, params: {chunk_size: [67108864, 134217728, 268435456, 536870912, 1073741824]}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -856,10 +888,11 @@ experiments:
       gpu_staging_numa: auto
 
   - id: extended_v4_large_chunk_multi_gpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*reuse_f32]
     algorithms:
-      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -869,11 +902,12 @@ experiments:
       gpu_staging_numa: auto
 
   - id: extended_v4_large_chunk_hybrid_one_gpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*reuse_f32]
     algorithms:
-      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -883,11 +917,12 @@ experiments:
       gpu_staging_numa: auto
 
   - id: extended_v4_large_chunk_hybrid_two_gpu
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*reuse_f32]
     algorithms:
-      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: hybrid_static_equal_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 2, pipeline_chunks: 16}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -899,12 +934,13 @@ experiments:
   # Whole-transfer controls on the same 4 GiB dataset. gpu_cub represents one
   # application-level H2D copy of all 4 GiB; device_resident isolates the kernel.
   - id: extended_v4_large_chunk_whole_transfer_reference
+    use_global_reuse_count: true
     operations: [sum]
     datasets: [*reuse_f32]
     algorithms:
       - {id: cpu_omp_simd, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
-      - {id: gpu_cub, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100], use_cuda_graphs: false}}
-      - {id: gpu_cub_device_resident, params: {reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100], use_cuda_graphs: false}}
+      - {id: gpu_cub, params: {use_cuda_graphs: false}}
+      - {id: gpu_cub_device_resident, params: {use_cuda_graphs: false}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -930,7 +966,7 @@ experiments:
     operations: [sum, min, max]
     datasets: *capability_datasets
     algorithms:
-      - {id: gpu_cub_gds, params: {chunk_size: 16777216, reuse_count: [1, 21]}}
+      - {id: gpu_cub_gds, params: {chunk_size: 16777216}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
