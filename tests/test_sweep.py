@@ -249,3 +249,96 @@ def test_mixed_explicit_single_and_multi_gpu_sets_are_supported() -> None:
     )
     tasks = SweepPlanner(AlgorithmCatalog(), topology).plan(config)
     assert {tuple(t.gpu_ids) for t in tasks} == {(0,), (1,), (0, 1)}
+
+
+def test_global_reuse_sweep_is_applied_to_opted_in_groups() -> None:
+    topology = SystemTopologyModel(
+        hostname="x", os="Linux", kernel="x", machine="x86_64",
+        logical_cpus=[TopologyCpu(cpu_id=0, socket_id=0, core_id=0, numa_node=0)],
+        allowed_cpus=[0], numa_nodes={0: [0]}, gpus=[],
+        total_ram_bytes=1 << 30, nvml_available=False,
+    )
+    config = RootConfig(
+        sweeps={"reuse_count": [1, 5, 21, 100]},
+        measurement={"blocks": 1, "timing_repetitions": 3},
+        energy={"enable_cpu": False, "enable_gpu": False},
+        experiments=[
+            ExperimentGroup(
+                id="reuse",
+                datasets=[DatasetSpec(size=1024, dtype=DType.float32)],
+                algorithms=[{"id": "cpu_omp_simd"}],
+                operations=["sum"],
+                hardware=HardwareConfig(gpu_sets=[]),
+                use_global_reuse_count=True,
+            )
+        ],
+    )
+    tasks = SweepPlanner(AlgorithmCatalog(), topology).plan(config)
+    assert {int(t.algorithm_params["reuse_count"]) for t in tasks} == {1, 5, 21, 100}
+
+
+def test_global_chunk_sweep_applies_to_chunk_and_pipeline_algorithms() -> None:
+    from prbench.models import TopologyGpu
+
+    topology = SystemTopologyModel(
+        hostname="x", os="Linux", kernel="x", machine="x86_64",
+        logical_cpus=[
+            TopologyCpu(cpu_id=0, socket_id=0, core_id=0, numa_node=0),
+            TopologyCpu(cpu_id=1, socket_id=0, core_id=1, numa_node=0),
+        ],
+        allowed_cpus=[0, 1], numa_nodes={0: [0, 1]},
+        gpus=[TopologyGpu(index=0, name="g0", uuid="0", pci_bus_id="0000:01:00.0", memory_bytes=8 << 30)],
+        total_ram_bytes=16 << 30, nvml_available=True,
+    )
+    config = RootConfig(
+        sweeps={"transfer_chunk_elements": [262144, 1048576, 16777216]},
+        measurement={"blocks": 1, "timing_repetitions": 3},
+        energy={"enable_cpu": False, "enable_gpu": False},
+        experiments=[
+            ExperimentGroup(
+                id="chunks",
+                datasets=[DatasetSpec(size=100000000, dtype=DType.float32)],
+                algorithms=[
+                    {"id": "gpu_cub_chunked"},
+                    {"id": "gpu_cub_async", "params": {"pipeline_streams": 2, "pipeline_chunks": 4}},
+                ],
+                operations=["sum"],
+                hardware=HardwareConfig(gpu_sets=[0]),
+            )
+        ],
+    )
+    tasks = SweepPlanner(AlgorithmCatalog(), topology).plan(config)
+    chunked = {int(t.algorithm_params["chunk_size"]) for t in tasks if t.algorithm.id == "gpu_cub_chunked"}
+    async_chunks = {
+        int(t.algorithm_params["pipeline_chunk_elements"])
+        for t in tasks if t.algorithm.id == "gpu_cub_async"
+    }
+    assert chunked == {262144, 1048576, 16777216}
+    assert async_chunks == {262144, 1048576, 16777216}
+
+
+def test_local_parameter_override_beats_global_sweep() -> None:
+    definition = AlgorithmCatalog().get("gpu_cub_chunked")
+    config = RootConfig(
+        sweeps={
+            "reuse_count": [1, 5, 21],
+            "transfer_chunk_elements": [262144, 1048576],
+        },
+        experiments=[
+            ExperimentGroup(
+                id="override",
+                datasets=[DatasetSpec(size=1024, dtype=DType.float32)],
+                algorithms=[{"id": "gpu_cub_chunked"}],
+                use_global_reuse_count=True,
+            )
+        ],
+    )
+    group = config.experiments[0]
+    params = SweepPlanner._effective_params(
+        config,
+        group,
+        definition,
+        {"chunk_size": 4194304, "reuse_count": [1, 21]},
+    )
+    assert params["chunk_size"] == 4194304
+    assert params["reuse_count"] == [1, 21]
