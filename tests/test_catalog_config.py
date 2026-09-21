@@ -138,7 +138,7 @@ def test_final_apl13_configs_validate() -> None:
     assert comprehensive.measurement.blocks == 3
     assert out_of_core.measurement.blocks == 3
     assert extended.measurement.blocks == 3
-    assert extended.sweeps.reuse_count == [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]
+    assert extended.sweeps.reuse_count == [1, 2, 3, 4, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]
     assert extended.sweeps.transfer_chunk_elements == [
         262144, 1048576, 4194304, 16777216, 67108864,
         134217728, 268435456, 536870912, 1073741824,
