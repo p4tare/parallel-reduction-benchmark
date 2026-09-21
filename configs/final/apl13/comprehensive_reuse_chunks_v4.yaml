@@ -736,13 +736,13 @@ experiments:
       memory_policy: interleave
       gpu_staging_numa: auto
 
-  # File-backed paths are also sensitive to transfer chunking, but K=100 implies
-  # repeated source reads. Use a reduced, still broad K grid to keep I/O finite.
+  # File-backed paths are also sensitive to transfer chunking. They use the same
+  # full K grid despite the higher I/O cost so reuse comparisons remain symmetric.
   - id: extended_v4_chunk_sweep_file_stream_cpu
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: cpu_omp_simd_file_stream, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 10, 21, 50, 100]}}
+      - {id: cpu_omp_simd_file_stream, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -755,8 +755,8 @@ experiments:
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: gpu_cub_file_stream, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 10, 21, 50, 100]}}
-      - {id: gpu_cub_file_stream_async, params: {pipeline_streams: 4, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 10, 21, 50, 100]}}
+      - {id: gpu_cub_file_stream, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: gpu_cub_file_stream_async, params: {pipeline_streams: 4, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
@@ -769,8 +769,8 @@ experiments:
     operations: [sum]
     datasets: [*f32_1e8]
     algorithms:
-      - {id: gpu_multi_cub_file_stream_async, params: {pipeline_streams: 4, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 10, 21, 50, 100]}}
-      - {id: hybrid_file_stream_equal, params: {pipeline_streams: 4, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864], cpu_fraction: 0.50, reuse_count: [1, 10, 21, 50, 100]}}
+      - {id: gpu_multi_cub_file_stream_async, params: {pipeline_streams: 4, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
+      - {id: hybrid_file_stream_equal, params: {pipeline_streams: 4, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864], cpu_fraction: 0.50, reuse_count: [1, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]}}
     hardware:
       cpu_core_class: all
       cpu_thread_policy: one_thread_per_core
