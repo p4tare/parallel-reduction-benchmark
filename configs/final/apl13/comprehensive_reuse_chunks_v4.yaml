@@ -614,7 +614,58 @@ experiments:
       gpu_staging_numa: auto
 
   # ---------------------------------------------------------------------------
-  # D. CAPABILITY PROBES
+  # D. OUT-OF-CORE > RAM: 192 GiB float32 SUM
+  #    N=51,539,607,552 exceeds apl13 physical RAM (~187 GiB), so only file-stream
+  #    algorithms are valid. These groups use the same global K and chunk sweeps.
+  # ---------------------------------------------------------------------------
+  - id: extended_v4_out_of_core_192gib_cpu
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: &out_of_core_192gib
+      - &f32_192gib {size: 51539607552, dtype: float32, distribution: uniform, seed: 63101, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+    algorithms:
+      - {id: cpu_omp_simd_file_stream}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: extended_v4_out_of_core_192gib_single_gpu
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: *out_of_core_192gib
+    algorithms:
+      - {id: gpu_cub_file_stream}
+      - {id: gpu_cub_file_stream_async, params: {pipeline_streams: 4}}
+      - {id: hybrid_file_stream_equal, params: {pipeline_streams: 4, cpu_fraction: 0.50}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: extended_v4_out_of_core_192gib_two_gpu
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: *out_of_core_192gib
+    algorithms:
+      - {id: gpu_multi_cub_file_stream_async, params: {pipeline_streams: 4}}
+      - {id: hybrid_file_stream_equal, params: {pipeline_streams: 4, cpu_fraction: 0.50}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [[0, 1]]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  # ---------------------------------------------------------------------------
+  # E. CAPABILITY PROBES
   # ---------------------------------------------------------------------------
   - id: final_v4_hmm_capability_probe
     operations: [sum, min, max]
