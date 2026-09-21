@@ -41,7 +41,7 @@ class SweepPlanner:
     def plan(self, config: RootConfig) -> list[TaskSpec]:
         base: list[TaskSpec] = []
         for group in config.experiments:
-            base.extend(self._plan_group(group))
+            base.extend(self._plan_group(group, config))
 
         all_instances: list[TaskSpec] = []
         for block in range(config.measurement.blocks):
@@ -58,14 +58,15 @@ class SweepPlanner:
             all_instances.extend(cloned)
         return all_instances
 
-    def _plan_group(self, group: ExperimentGroup) -> list[TaskSpec]:
+    def _plan_group(self, group: ExperimentGroup, config: RootConfig) -> list[TaskSpec]:
         tasks: list[TaskSpec] = []
         for dataset in group.datasets:
             for operation in group.operations:
                 for request in group.algorithms:
                     definition = self.catalog.get(request.id)
                     gpu_sets = self._resolve_gpu_sets(group, definition)
-                    params_grid = self._expand_params(request.params)
+                    effective_params = self._effective_params(config, group, definition, request.params)
+                    params_grid = self._expand_params(effective_params)
                     for gpu_ids in gpu_sets:
                         cpu_pool = resolve_cpu_pool(
                             self.topology,
@@ -166,6 +167,35 @@ class SweepPlanner:
             seen.add(key)
             unique.append(gpu_set)
         return unique
+
+
+    @staticmethod
+    def _effective_params(
+        config: RootConfig,
+        group: ExperimentGroup,
+        definition: AlgorithmDefinition,
+        request_params: dict[str, Any],
+    ) -> dict[str, Any]:
+        params = dict(request_params)
+
+        if (
+            group.use_global_reuse_count
+            and config.sweeps.reuse_count
+            and "reuse_count" in definition.tunables
+            and "reuse_count" not in params
+        ):
+            params["reuse_count"] = list(config.sweeps.reuse_count)
+
+        if config.sweeps.transfer_chunk_elements:
+            if "chunk_size" in definition.tunables and "chunk_size" not in params:
+                params["chunk_size"] = list(config.sweeps.transfer_chunk_elements)
+            if (
+                "pipeline_chunk_elements" in definition.tunables
+                and "pipeline_chunk_elements" not in params
+            ):
+                params["pipeline_chunk_elements"] = list(config.sweeps.transfer_chunk_elements)
+
+        return params
 
     @staticmethod
     def _expand_params(params: dict[str, Any]) -> list[dict[str, Any]]:
