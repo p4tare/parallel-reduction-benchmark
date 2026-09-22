@@ -1,0 +1,990 @@
+# DES V4 REUSE + TRANSFER-CHUNK + P/E-CORE CAMPAIGN
+# Machine family: DES single-GPU heterogeneous Intel CPU (P-cores + E-cores).
+#
+# This is the single-GPU counterpart of configs/final/apl13/comprehensive_reuse_chunks_v4.yaml.
+# The main research extension on DES is explicit P-core vs E-core comparison for CPU and
+# CPU+GPU hybrid reductions. Multi-GPU-only groups are omitted because DES has one GPU.
+#
+# DES-specific tunables are retained from the previous frozen DES campaigns:
+#   legacy GPU blocks: global=128, shared=128, warp=256, two_pass=256
+#   async: 4 streams, baseline chunk=4,194,304 elements
+#   dynamic fixed: 16,777,216 elements
+#   guided: min=1,048,576, factor=4
+#   adaptive: min=65,536, max=16,777,216, target=2 ms, alpha=0.25
+#
+# The measurement protocol follows the current apl13 follow-up so cross-machine results
+# can be analysed with the same timing/energy semantics. DES keeps its known platform
+# exception: a graphics process on the single GPU is allowed and must remain constant.
+#
+# Canonical practical reuse sweep:
+#   K=[1,2,3,4,5,10,15,20,21,22,25,30,50,100]
+#
+# Chunk sensitivity:
+#   N=1e8 float32 SUM: 1, 4, 16, 64, 256 MiB
+#   4 GiB float32 SUM: 256, 512 MiB, 1, 2, 4 GiB
+
+output_dir: results/des_reuse_chunks_coreclasses_v4
+dataset_cache_dir: .prbench/datasets
+
+sweeps:
+  reuse_count: [1, 2, 3, 4, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]
+
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: "on"
+  jobs: null
+  cxx_compiler: null
+  cuda_host_compiler: null
+
+measurement:
+  warmup_runs: 2
+  scheduler_calibration_repetitions: 3
+  scheduler_calibration_bursts: 1
+  timing_repetitions: auto
+  timing_probe_repetitions: 3
+  timing_target_batch_seconds: 0.50
+  timing_min_repetitions: 5
+  timing_max_repetitions: 100
+  cache_rotation_target_bytes: 134217728
+  cache_rotation_max_replicas: 256
+  energy_batch_repetitions: auto
+  energy_target_batch_seconds: 3.0
+  energy_min_repetitions: 1
+  energy_max_repetitions: 200
+  blocks: 3
+  randomization_seed: 20261007
+  max_dataset_ram_fraction: 0.60
+  max_dataset_storage_fraction_of_free: 0.90
+  gpu_memory_safety_fraction: 0.80
+  thermal_safety_gpu_c: 85
+  thermal_safety_cpu_c: 95
+  thermal_wait_timeout_s: 300
+  worker_event_timeout_s: 7200
+  strict_preflight: true
+  max_preflight_cpu_load_percent: 5.0
+  allow_gpu_graphics_processes: true
+
+energy:
+  enable_cpu: true
+  enable_gpu: true
+  gpu_power_fallback_poll_ms: 50
+
+telemetry:
+  enabled: true
+  capture_cpu_frequency: true
+  capture_cpu_temperature: true
+  capture_gpu_state: true
+  capture_pre_post_timing: true
+  capture_pre_post_energy: true
+
+system_baselines:
+  capture_memory_inventory: true
+  stream_executable: null
+  stream_args: []
+  stream_timeout_s: 180
+
+experiments:
+  # ---------------------------------------------------------------------------
+  # A. COMMON CORE MATRIX + P/E CORE CLASSES
+  #    Same datasets for all classes: 4 dtypes x 4 N x 3 operations.
+  # ---------------------------------------------------------------------------
+  - id: des_v4_cpu_all_reference
+    operations: [sum, min, max]
+    datasets: &core_datasets
+      - &i32_1e5 {size: 100000, dtype: int32, distribution: integers, seed: 60101, low: -1, high: 1}
+      - &i32_1e6 {size: 1000000, dtype: int32, distribution: integers, seed: 60101, low: -1, high: 1}
+      - &i32_1e7 {size: 10000000, dtype: int32, distribution: integers, seed: 60101, low: -1, high: 1}
+      - &i32_1e8 {size: 100000000, dtype: int32, distribution: integers, seed: 60101, low: -1, high: 1}
+
+      - &i64_1e5 {size: 100000, dtype: int64, distribution: integers, seed: 60201, low: -1000000, high: 1000000}
+      - &i64_1e6 {size: 1000000, dtype: int64, distribution: integers, seed: 60201, low: -1000000, high: 1000000}
+      - &i64_1e7 {size: 10000000, dtype: int64, distribution: integers, seed: 60201, low: -1000000, high: 1000000}
+      - &i64_1e8 {size: 100000000, dtype: int64, distribution: integers, seed: 60201, low: -1000000, high: 1000000}
+
+      - &f32_1e5 {size: 100000, dtype: float32, distribution: uniform, seed: 60301, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - &f32_1e6 {size: 1000000, dtype: float32, distribution: uniform, seed: 60301, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - &f32_1e7 {size: 10000000, dtype: float32, distribution: uniform, seed: 60301, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - &f32_1e8 {size: 100000000, dtype: float32, distribution: uniform, seed: 60301, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+
+      - &f64_1e5 {size: 100000, dtype: float64, distribution: uniform, seed: 60401, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 16}}
+      - &f64_1e6 {size: 1000000, dtype: float64, distribution: uniform, seed: 60401, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 16}}
+      - &f64_1e7 {size: 10000000, dtype: float64, distribution: uniform, seed: 60401, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 16}}
+      - &f64_1e8 {size: 100000000, dtype: float64, distribution: uniform, seed: 60401, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 16}}
+    algorithms:
+      - {id: cpu_seq}
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_cpu_all_threads
+    operations: [sum, min, max]
+    datasets: *core_datasets
+    algorithms:
+      - {id: cpu_omp}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: all_threads
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_cpu_p_physical
+    operations: [sum, min, max]
+    datasets: *core_datasets
+    algorithms: &coreclass_cpu_algorithms
+      - {id: cpu_seq}
+      - {id: cpu_omp}
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_cpu_p_smt
+    operations: [sum, min, max]
+    datasets: *core_datasets
+    algorithms:
+      - {id: cpu_omp}
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: all_threads
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_cpu_e_physical
+    operations: [sum, min, max]
+    datasets: *core_datasets
+    algorithms: *coreclass_cpu_algorithms
+    hardware:
+      cpu_core_class: efficiency
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_single_gpu_legacy_core
+    operations: [sum, min, max]
+    datasets: *core_datasets
+    algorithms:
+      - {id: gpu_global_atomic, params: {block_size: 128}}
+      - {id: gpu_shared_naive, params: {block_size: 128}}
+      - {id: gpu_warp_atomic, params: {block_size: 256}}
+      - {id: gpu_two_pass, params: {block_size: 256}}
+      - {id: gpu_cub, params: {reuse_count: 1, use_cuda_graphs: false}}
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 4194304, reuse_count: 1}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_single_gpu_memory_paths_core
+    operations: [sum, min, max]
+    datasets: *core_datasets
+    algorithms:
+      - {id: gpu_cub_chunked, params: {chunk_size: 4194304, reuse_count: 1}}
+      - {id: gpu_cub_pinned_direct, params: {chunk_size: 4194304, reuse_count: 1}}
+      - {id: gpu_cub_zero_copy, params: {reuse_count: 1}}
+      - {id: gpu_cub_managed_fault, params: {reuse_count: 1}}
+      - {id: gpu_cub_managed_prefetch, params: {reuse_count: 1}}
+      - {id: gpu_cub_managed_advised, params: {reuse_count: 1}}
+      - {id: gpu_cub_device_resident, params: {reuse_count: 1, use_cuda_graphs: false}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_hybrid_all_core
+    operations: [sum, min, max]
+    datasets: *core_datasets
+    algorithms: &des_hybrid_algorithms
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_equal_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 4194304}}
+      - {id: hybrid_static_profiled}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 4194304}}
+      - {id: hybrid_dynamic_fixed, params: {chunk_size: 16777216}}
+      - {id: hybrid_dynamic_guided, params: {min_chunk_size: 1048576, guided_factor: 4.0}}
+      - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 65536, max_chunk_size: 16777216, target_chunk_ms: 2.0, ema_alpha: 0.25}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_hybrid_p_core
+    operations: [sum, min, max]
+    datasets: *core_datasets
+    algorithms: *des_hybrid_algorithms
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_hybrid_e_core
+    operations: [sum, min, max]
+    datasets: *core_datasets
+    algorithms: *des_hybrid_algorithms
+    hardware:
+      cpu_core_class: efficiency
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  # ---------------------------------------------------------------------------
+  # B. FILE-STREAM AT N=1e8
+  # ---------------------------------------------------------------------------
+  - id: des_v4_file_stream_cpu_all
+    operations: [sum, min, max]
+    datasets: &medium_datasets [*i32_1e8, *i64_1e8, *f32_1e8, *f64_1e8]
+    algorithms:
+      - {id: cpu_omp_simd_file_stream, params: {chunk_size: 16777216, reuse_count: 1}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_file_stream_cpu_p
+    operations: [sum, min, max]
+    datasets: *medium_datasets
+    algorithms:
+      - {id: cpu_omp_simd_file_stream, params: {chunk_size: 16777216, reuse_count: 1}}
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_file_stream_cpu_e
+    operations: [sum, min, max]
+    datasets: *medium_datasets
+    algorithms:
+      - {id: cpu_omp_simd_file_stream, params: {chunk_size: 16777216, reuse_count: 1}}
+    hardware:
+      cpu_core_class: efficiency
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_file_stream_gpu
+    operations: [sum, min, max]
+    datasets: *medium_datasets
+    algorithms:
+      - {id: gpu_cub_file_stream, params: {chunk_size: 16777216, reuse_count: 1}}
+      - {id: gpu_cub_file_stream_async, params: {pipeline_streams: 4, pipeline_chunk_elements: 16777216, reuse_count: 1}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_file_stream_hybrid_all
+    operations: [sum, min, max]
+    datasets: *medium_datasets
+    algorithms: &file_hybrid_algorithm
+      - {id: hybrid_file_stream_equal, params: {pipeline_streams: 4, pipeline_chunk_elements: 16777216, cpu_fraction: 0.50, reuse_count: 1}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_file_stream_hybrid_p
+    operations: [sum, min, max]
+    datasets: *medium_datasets
+    algorithms: *file_hybrid_algorithm
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_file_stream_hybrid_e
+    operations: [sum, min, max]
+    datasets: *medium_datasets
+    algorithms: *file_hybrid_algorithm
+    hardware:
+      cpu_core_class: efficiency
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  # ---------------------------------------------------------------------------
+  # C. LARGE HOST-RESIDENT SCALE: N=1e9 (already validated on DES)
+  # ---------------------------------------------------------------------------
+  - id: des_v4_large_cpu_all
+    operations: [sum, min, max]
+    datasets: &large_datasets
+      - &i32_1e9 {size: 1000000000, dtype: int32, distribution: integers, seed: 61101, low: -1, high: 1}
+      - &i64_1e9 {size: 1000000000, dtype: int64, distribution: integers, seed: 61201, low: -1000000, high: 1000000}
+      - &f32_1e9 {size: 1000000000, dtype: float32, distribution: uniform, seed: 61301, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - &f64_1e9 {size: 1000000000, dtype: float64, distribution: uniform, seed: 61401, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 16}}
+    algorithms:
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_large_cpu_p
+    operations: [sum, min, max]
+    datasets: *large_datasets
+    algorithms:
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_large_cpu_e
+    operations: [sum, min, max]
+    datasets: *large_datasets
+    algorithms:
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: efficiency
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_large_single_gpu
+    operations: [sum, min, max]
+    datasets: *large_datasets
+    algorithms:
+      - {id: gpu_cub, params: {reuse_count: 1, use_cuda_graphs: false}}
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 4194304, reuse_count: 1}}
+      - {id: gpu_cub_chunked, params: {chunk_size: 4194304, reuse_count: 1}}
+      - {id: gpu_cub_pinned_direct, params: {chunk_size: 4194304, reuse_count: 1}}
+      - {id: gpu_cub_zero_copy, params: {reuse_count: 1}}
+      - {id: gpu_cub_managed_fault, params: {reuse_count: 1}}
+      - {id: gpu_cub_managed_prefetch, params: {reuse_count: 1}}
+      - {id: gpu_cub_managed_advised, params: {reuse_count: 1}}
+      - {id: gpu_cub_device_resident, params: {reuse_count: 1, use_cuda_graphs: false}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_large_hybrid_all
+    operations: [sum, min, max]
+    datasets: *large_datasets
+    algorithms: &large_hybrid_algorithms
+      - {id: hybrid_static_equal}
+      - {id: hybrid_static_profiled}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 4194304}}
+      - {id: hybrid_dynamic_adaptive, params: {min_chunk_size: 65536, max_chunk_size: 16777216, target_chunk_ms: 2.0, ema_alpha: 0.25}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_large_hybrid_p
+    operations: [sum, min, max]
+    datasets: *large_datasets
+    algorithms: *large_hybrid_algorithms
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_large_hybrid_e
+    operations: [sum, min, max]
+    datasets: *large_datasets
+    algorithms: *large_hybrid_algorithms
+    hardware:
+      cpu_core_class: efficiency
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  # ---------------------------------------------------------------------------
+  # D. EXACT 4 GiB REUSE BREAK-EVEN
+  # ---------------------------------------------------------------------------
+  - id: des_v4_reuse_cpu_all
+    use_global_reuse_count: true
+    operations: [sum, min, max]
+    datasets: &reuse_4gib_datasets
+      - &reuse_i32 {size: 1073741824, dtype: int32, distribution: integers, seed: 62101, low: -1, high: 1}
+      - &reuse_i64 {size: 536870912, dtype: int64, distribution: integers, seed: 62201, low: -1000000, high: 1000000}
+      - &reuse_f32 {size: 1073741824, dtype: float32, distribution: uniform, seed: 62301, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+      - &reuse_f64 {size: 536870912, dtype: float64, distribution: uniform, seed: 62401, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 16}}
+    algorithms:
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_cpu_p
+    use_global_reuse_count: true
+    operations: [sum, min, max]
+    datasets: *reuse_4gib_datasets
+    algorithms:
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_cpu_e
+    use_global_reuse_count: true
+    operations: [sum, min, max]
+    datasets: *reuse_4gib_datasets
+    algorithms:
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: efficiency
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_cub_gpu0
+    use_global_reuse_count: true
+    operations: [sum, min, max]
+    datasets: *reuse_4gib_datasets
+    algorithms:
+      - {id: gpu_cub, params: {use_cuda_graphs: false}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_device_resident_gpu0
+    use_global_reuse_count: true
+    operations: [sum, min, max]
+    datasets: *reuse_4gib_datasets
+    algorithms:
+      - {id: gpu_cub_device_resident, params: {use_cuda_graphs: false}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_zero_copy_control
+    operations: [sum]
+    datasets: [*reuse_f32]
+    algorithms:
+      - {id: gpu_cub_zero_copy, params: {reuse_count: [1, 2, 3, 4, 5]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  # ---------------------------------------------------------------------------
+  # E. UNIVERSAL REUSE AT N=1e8 FLOAT32 SUM
+  # ---------------------------------------------------------------------------
+  - id: des_v4_reuse_cpu_all_100m
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms: &reuse_cpu_algorithms
+      - {id: cpu_seq}
+      - {id: cpu_omp}
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_cpu_p_100m
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms: *reuse_cpu_algorithms
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_cpu_e_100m
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms: *reuse_cpu_algorithms
+    hardware:
+      cpu_core_class: efficiency
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_single_gpu_legacy
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: gpu_global_atomic, params: {block_size: 128, reuse_count: [1, 2, 3, 4, 5, 10, 15, 20, 21]}}
+      - {id: gpu_shared_naive, params: {block_size: 128}}
+      - {id: gpu_warp_atomic, params: {block_size: 256}}
+      - {id: gpu_two_pass, params: {block_size: 256}}
+      - {id: gpu_cub, params: {use_cuda_graphs: false}}
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 4194304}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_memory_paths
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: gpu_cub_chunked, params: {chunk_size: 4194304}}
+      - {id: gpu_cub_pinned_direct, params: {chunk_size: 4194304}}
+      - {id: gpu_cub_zero_copy}
+      - {id: gpu_cub_managed_fault}
+      - {id: gpu_cub_managed_prefetch}
+      - {id: gpu_cub_managed_advised}
+      - {id: gpu_cub_device_resident, params: {use_cuda_graphs: false}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_hybrid_all
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms: *des_hybrid_algorithms
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_hybrid_p
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms: *des_hybrid_algorithms
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_hybrid_e
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms: *des_hybrid_algorithms
+    hardware:
+      cpu_core_class: efficiency
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_file_stream_cpu_all
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: cpu_omp_simd_file_stream, params: {chunk_size: 16777216}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_file_stream_cpu_p
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: cpu_omp_simd_file_stream, params: {chunk_size: 16777216}}
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_file_stream_cpu_e
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: cpu_omp_simd_file_stream, params: {chunk_size: 16777216}}
+    hardware:
+      cpu_core_class: efficiency
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_file_stream_gpu
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: gpu_cub_file_stream, params: {chunk_size: 16777216}}
+      - {id: gpu_cub_file_stream_async, params: {pipeline_streams: 4, pipeline_chunk_elements: 16777216}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_file_stream_hybrid_all
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms: *file_hybrid_algorithm
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_file_stream_hybrid_p
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms: *file_hybrid_algorithm
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_reuse_file_stream_hybrid_e
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms: *file_hybrid_algorithm
+    hardware:
+      cpu_core_class: efficiency
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  # ---------------------------------------------------------------------------
+  # F. CHUNK x K SENSITIVITY AT N=1e8 FLOAT32 SUM
+  #    1,4,16,64,256 MiB for float32.
+  # ---------------------------------------------------------------------------
+  - id: des_v4_chunk_reuse_single_gpu
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864]}}
+      - {id: gpu_cub_chunked, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864]}}
+      - {id: gpu_cub_pinned_direct, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_chunk_reuse_hybrid_all
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms: &chunk_hybrid_algorithms
+      - {id: hybrid_static_equal_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864]}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864]}}
+      - {id: hybrid_dynamic_fixed, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_chunk_reuse_hybrid_p
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms: *chunk_hybrid_algorithms
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_chunk_reuse_hybrid_e
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms: *chunk_hybrid_algorithms
+    hardware:
+      cpu_core_class: efficiency
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  # File-stream chunk sensitivity is K=1 so repeated I/O does not dominate runtime.
+  - id: des_v4_chunk_file_stream_cpu_all
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: cpu_omp_simd_file_stream, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: 1}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_chunk_file_stream_cpu_p
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: cpu_omp_simd_file_stream, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: 1}}
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_chunk_file_stream_cpu_e
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: cpu_omp_simd_file_stream, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: 1}}
+    hardware:
+      cpu_core_class: efficiency
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_chunk_file_stream_gpu
+    operations: [sum]
+    datasets: [*f32_1e8]
+    algorithms:
+      - {id: gpu_cub_file_stream, params: {chunk_size: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: 1}}
+      - {id: gpu_cub_file_stream_async, params: {pipeline_streams: 4, pipeline_chunk_elements: [262144, 1048576, 4194304, 16777216, 67108864], reuse_count: 1}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  # ---------------------------------------------------------------------------
+  # G. LARGE CHUNKS ON EXACT 4 GiB FLOAT32 SUM
+  #    256,512 MiB,1,2,4 GiB.
+  # ---------------------------------------------------------------------------
+  - id: des_v4_large_chunk_reuse_single_gpu_async
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*reuse_f32]
+    algorithms:
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_large_chunk_reuse_hybrid_all
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*reuse_f32]
+    algorithms:
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_large_chunk_reuse_hybrid_p
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*reuse_f32]
+    algorithms:
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824]}}
+    hardware:
+      cpu_core_class: performance
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_large_chunk_reuse_hybrid_e
+    use_global_reuse_count: true
+    operations: [sum]
+    datasets: [*reuse_f32]
+    algorithms:
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824]}}
+    hardware:
+      cpu_core_class: efficiency
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: des_v4_large_chunk_controls
+    operations: [sum]
+    datasets: [*reuse_f32]
+    algorithms:
+      - {id: gpu_cub_chunked, params: {chunk_size: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: 1}}
+      - {id: gpu_cub_pinned_direct, params: {chunk_size: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: 1}}
+      - {id: gpu_cub_file_stream, params: {chunk_size: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: 1}}
+      - {id: gpu_cub_file_stream_async, params: {pipeline_streams: 4, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: 1}}
+      - {id: hybrid_dynamic_fixed, params: {chunk_size: [67108864, 134217728, 268435456, 536870912, 1073741824], reuse_count: 1}}
+      - {id: hybrid_file_stream_equal, params: {pipeline_streams: 4, pipeline_chunk_elements: [67108864, 134217728, 268435456, 536870912, 1073741824], cpu_fraction: 0.50, reuse_count: 1}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  # ---------------------------------------------------------------------------
+  # H. CAPABILITY PROBES
+  # ---------------------------------------------------------------------------
+  - id: des_v4_hmm_capability_probe
+    operations: [sum, min, max]
+    datasets: &capability_datasets [*i32_1e6, *i64_1e6, *f32_1e6, *f64_1e6]
+    algorithms:
+      - {id: gpu_cub_hmm, params: {reuse_count: [1, 21]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: des_v4_gds_capability_probe
+    operations: [sum, min, max]
+    datasets: *capability_datasets
+    algorithms:
+      - {id: gpu_cub_gds, params: {chunk_size: 16777216, reuse_count: [1, 21]}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
