@@ -160,6 +160,20 @@ def test_extended_apl13_24h_campaign_retains_baseline_and_focuses_extensions() -
 
     assert "extended_v4_out_of_core_192gib_cpu" not in by_group
 
+    des = ConfigurationLoader(AlgorithmCatalog()).load(
+        root / "configs" / "final" / "des" / "comprehensive_reuse_chunks_coreclasses_v4.yaml"
+    )
+    des_groups = {group.id: group for group in des.experiments}
+    assert des.sweeps.reuse_count == [1, 2, 3, 4, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]
+    assert all(
+        not any(isinstance(gpu_set, list) and len(gpu_set) > 1 for gpu_set in group.hardware.gpu_sets)
+        for group in des.experiments
+    )
+    assert "des_v4_cpu_p_physical" in des_groups
+    assert "des_v4_cpu_e_physical" in des_groups
+    assert "des_v4_hybrid_p_core" in des_groups
+    assert "des_v4_hybrid_e_core" in des_groups
+
     small = by_group["extended_24h_chunk_reuse_single_gpu"]
     small_chunks = {
         int(value)
