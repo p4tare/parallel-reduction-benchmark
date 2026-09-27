@@ -2,7 +2,7 @@
 # Functional validation of the largest dataset used by the final APL21 campaign.
 # This deliberately reuses the exact 128 GiB float32 dataset definition and
 # algorithm parameters from comprehensive_reuse_chunks_v4.yaml, but reduces the
-# measurement protocol to a single block and one timing/energy repetition.
+# measurement protocol to a single block, three timing repetitions and one energy repetition.
 #
 # Purpose: catch allocation, migration, transfer, NUMA and multi-GPU failures
 # before starting the full 10,416-task campaign. Results from this file are NOT
@@ -24,11 +24,11 @@ measurement:
   warmup_runs: 1
   scheduler_calibration_repetitions: 3
   scheduler_calibration_bursts: 1
-  timing_repetitions: 1
+  timing_repetitions: 3
   timing_probe_repetitions: 3
   timing_target_batch_seconds: 0.50
-  timing_min_repetitions: 1
-  timing_max_repetitions: 1
+  timing_min_repetitions: 3
+  timing_max_repetitions: 3
   cache_rotation_target_bytes: 134217728
   cache_rotation_max_replicas: 256
   energy_batch_repetitions: 1
