@@ -190,3 +190,25 @@ def test_extended_apl13_24h_campaign_retains_baseline_and_focuses_extensions() -
     assert large.algorithms[0].params["pipeline_chunk_elements"] == [
         67108864, 134217728, 268435456, 536870912, 1073741824
     ]
+
+
+def test_apl21_24h_campaign_matches_apl13_axes_and_memory_boundaries() -> None:
+    root = Path(__file__).resolve().parents[1]
+    cfg = ConfigurationLoader(AlgorithmCatalog()).load(
+        root / "configs" / "final" / "apl21" / "comprehensive_reuse_chunks_v4.yaml"
+    )
+    groups = {group.id: group for group in cfg.experiments}
+
+    assert cfg.sweeps.reuse_count == [1, 2, 3, 4, 5, 10, 15, 20, 21, 22, 25, 30, 50, 100]
+    assert "apl21_v4_64gib_bridge_single_gpu" in groups
+    assert "apl21_v4_above_vram_single_gpu_bounded" in groups
+    assert "apl21_v4_above_vram_two_gpu" in groups
+
+    bridge = groups["apl21_v4_64gib_bridge_single_gpu"]
+    assert bridge.datasets[0].size * 4 == 64 * (1024**3)
+    assert {a.id for a in bridge.algorithms} >= {"gpu_cub", "gpu_cub_device_resident"}
+
+    above = groups["apl21_v4_above_vram_single_gpu_bounded"]
+    assert above.datasets[0].size * 4 == 128 * (1024**3)
+    assert "gpu_cub" not in {a.id for a in above.algorithms}
+    assert "gpu_cub_device_resident" not in {a.id for a in above.algorithms}
