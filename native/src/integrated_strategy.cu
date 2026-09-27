@@ -40,6 +40,49 @@ using Clock = std::chrono::steady_clock;
     } \
 } while (0)
 
+
+/*
+ * CUDA 13 changed the default Unified Memory runtime API from integer device
+ * ordinals to cudaMemLocation. Keep one source compatible with both the CUDA
+ * 12.x toolchains used on apl13/DES and CUDA 13.x used for Blackwell on apl21.
+ */
+cudaError_t mem_advise_compat(
+    const void* ptr,
+    std::size_t bytes,
+    cudaMemoryAdvise advice,
+    int device
+) {
+#if CUDART_VERSION >= 13000
+    cudaMemLocation location{};
+    location.type = cudaMemLocationTypeDevice;
+    location.id = device;
+    return cudaMemAdvise(ptr, bytes, advice, location);
+#else
+    return cudaMemAdvise(ptr, bytes, advice, device);
+#endif
+}
+
+cudaError_t mem_prefetch_compat(
+    const void* ptr,
+    std::size_t bytes,
+    int destination,
+    cudaStream_t stream
+) {
+#if CUDART_VERSION >= 13000
+    cudaMemLocation location{};
+    if (destination == cudaCpuDeviceId) {
+        location.type = cudaMemLocationTypeHost;
+        location.id = 0;
+    } else {
+        location.type = cudaMemLocationTypeDevice;
+        location.id = destination;
+    }
+    return cudaMemPrefetchAsync(ptr, bytes, location, 0, stream);
+#else
+    return cudaMemPrefetchAsync(ptr, bytes, destination, stream);
+#endif
+}
+
 template <class F>
 double timed_us(F&& f) {
     const auto begin = Clock::now();
@@ -308,8 +351,8 @@ private:
             CUDA_CHECK(cudaMallocManaged(&managed_, bytes));
             read_file(cfg_.dataset_path, managed_, cfg_.count);
             if (path_ == "managed_advised") {
-                CUDA_CHECK(cudaMemAdvise(managed_, bytes, cudaMemAdviseSetReadMostly, device_));
-                CUDA_CHECK(cudaMemAdvise(managed_, bytes, cudaMemAdviseSetAccessedBy, device_));
+                CUDA_CHECK(mem_advise_compat(managed_, bytes, cudaMemAdviseSetReadMostly, device_));
+                CUDA_CHECK(mem_advise_compat(managed_, bytes, cudaMemAdviseSetAccessedBy, device_));
             }
             cub_query(managed_, d_output_, cfg_.count, cfg_.operation, stream_, temp_, temp_bytes_);
             capacity_ = cfg_.count;
@@ -472,7 +515,7 @@ private:
         CUDA_CHECK(cudaSetDevice(device_));
         const std::size_t bytes = cfg_.count * sizeof(T);
         // Establish the CPU as the owner immediately before the measured interval.
-        CUDA_CHECK(cudaMemPrefetchAsync(managed_, bytes, cudaCpuDeviceId, stream_));
+        CUDA_CHECK(mem_prefetch_compat(managed_, bytes, cudaCpuDeviceId, stream_));
         CUDA_CHECK(cudaStreamSynchronize(stream_));
 
         DeviceMetrics dm;
@@ -480,7 +523,7 @@ private:
         const auto begin = Clock::now();
         if (path_ == "managed_prefetch") {
             dm.h2d_us = timed_us([&] {
-                CUDA_CHECK(cudaMemPrefetchAsync(managed_, bytes, device_, stream_));
+                CUDA_CHECK(mem_prefetch_compat(managed_, bytes, device_, stream_));
                 CUDA_CHECK(cudaStreamSynchronize(stream_));
             });
             dm.h2d_bytes = bytes;
