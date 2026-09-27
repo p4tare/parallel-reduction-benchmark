@@ -1,0 +1,115 @@
+# APL21 128 GiB smoke test
+# Functional validation of the largest dataset used by the final APL21 campaign.
+# This deliberately reuses the exact 128 GiB float32 dataset definition and
+# algorithm parameters from comprehensive_reuse_chunks_v4.yaml, but reduces the
+# measurement protocol to a single block and one timing/energy repetition.
+#
+# Purpose: catch allocation, migration, transfer, NUMA and multi-GPU failures
+# before starting the full 10,416-task campaign. Results from this file are NOT
+# intended for final performance conclusions.
+
+output_dir: results/apl21_128gib_smoke_v4
+dataset_cache_dir: .prbench/datasets
+
+build:
+  build_dir: build
+  build_type: Release
+  native_cpu_tuning: true
+  enable_cuda: "on"
+  jobs: null
+  cxx_compiler: /usr/bin/g++-13
+  cuda_host_compiler: /usr/bin/g++-13
+
+measurement:
+  warmup_runs: 1
+  scheduler_calibration_repetitions: 3
+  scheduler_calibration_bursts: 1
+  timing_repetitions: 1
+  timing_probe_repetitions: 3
+  timing_target_batch_seconds: 0.50
+  timing_min_repetitions: 1
+  timing_max_repetitions: 1
+  cache_rotation_target_bytes: 134217728
+  cache_rotation_max_replicas: 256
+  energy_batch_repetitions: 1
+  energy_target_batch_seconds: 3.0
+  energy_min_repetitions: 1
+  energy_max_repetitions: 1
+  blocks: 1
+  randomization_seed: 20261009
+  max_dataset_ram_fraction: 0.70
+  max_dataset_storage_fraction_of_free: 0.90
+  gpu_memory_safety_fraction: 0.80
+  thermal_safety_gpu_c: 85
+  thermal_safety_cpu_c: 95
+  thermal_wait_timeout_s: 300
+  worker_event_timeout_s: 7200
+  strict_preflight: true
+  max_preflight_cpu_load_percent: 10.0
+  allow_gpu_graphics_processes: false
+
+energy:
+  enable_cpu: true
+  enable_gpu: true
+  gpu_power_fallback_poll_ms: 50
+
+telemetry:
+  enabled: true
+  capture_cpu_frequency: true
+  capture_cpu_temperature: true
+  capture_gpu_state: true
+  capture_pre_post_timing: true
+  capture_pre_post_energy: true
+
+system_baselines:
+  capture_memory_inventory: true
+  stream_executable: null
+  stream_args: []
+  stream_timeout_s: 180
+
+experiments:
+  - id: apl21_128gib_smoke_cpu_reference
+    operations: [sum]
+    datasets: &smoke_128gib
+      - &smoke_f32_128gib {size: 34359738368, dtype: float32, distribution: uniform, seed: 61601, low: -1.0, high: 1.0, quantization: {mode: binary_fraction, bits: 8}}
+    algorithms:
+      - {id: cpu_omp_simd}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: []
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
+
+  - id: apl21_128gib_smoke_single_gpu_bounded
+    operations: [sum]
+    datasets: *smoke_128gib
+    algorithms:
+      - {id: gpu_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864, reuse_count: 1}}
+      - {id: gpu_cub_chunked, params: {chunk_size: 67108864, reuse_count: 1}}
+      - {id: gpu_cub_zero_copy, params: {reuse_count: 1}}
+      - {id: gpu_cub_managed_fault, params: {reuse_count: 1}}
+      - {id: gpu_cub_managed_prefetch, params: {reuse_count: 1}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [0]
+      gpu_control_mode: dedicated
+      memory_policy: default
+      gpu_staging_numa: auto
+
+  - id: apl21_128gib_smoke_two_gpu
+    operations: [sum]
+    datasets: *smoke_128gib
+    algorithms:
+      - {id: gpu_multi_cub_equal}
+      - {id: gpu_multi_cub_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864, reuse_count: 1}}
+      - {id: hybrid_static_profiled_async, params: {pipeline_streams: 4, pipeline_chunks: 16, pipeline_chunk_elements: 67108864}}
+    hardware:
+      cpu_core_class: all
+      cpu_thread_policy: one_thread_per_core
+      gpu_sets: [[0, 1]]
+      gpu_control_mode: dedicated
+      memory_policy: interleave
+      gpu_staging_numa: auto
